@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator
 
+from .index import SongIndex, sounds_in
 from .model import Song, TimeSigChange
 
 
@@ -168,7 +169,8 @@ class GridView:
     Cell columns are absolute: column 0 is tick 0. Views take a slice of them.
     """
 
-    def __init__(self, song: Song, zoom: Zoom = Zoom(16)) -> None:
+    def __init__(self, song: Song, zoom: Zoom = Zoom(16),
+                 index: SongIndex | None = None) -> None:
         if song.is_smpte:
             raise ValueError(
                 "this file measures time in SMPTE frames, not beats, so it has "
@@ -178,6 +180,9 @@ class GridView:
         self.song = song
         self.zoom = zoom
         self.bars = BarMap(song)
+        #: Optional. A UI that repaints keeps one across views; a single print
+        #: doesn't need it and scans instead.
+        self.index = index
 
     @property
     def ticks_per_cell(self) -> int:
@@ -235,7 +240,9 @@ class GridView:
         started earlier and are still sounding, which is how ties survive scrolling."""
         lo = self.cell_to_tick(first_cell)
         hi = self.cell_to_tick(last_cell + 1)
-        return [n for n in track.notes if n.start < hi and n.end > lo]
+        if self.index is not None:
+            return self.index.touching(track, lo, hi)
+        return [n for n in track.notes if sounds_in(n, lo, hi)]
 
 
 __all__ = ["Zoom", "Bar", "BarMap", "GridView", "CellSpan"]

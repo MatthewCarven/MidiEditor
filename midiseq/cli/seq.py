@@ -22,7 +22,7 @@ MIDI_SUFFIXES = {".mid", ".midi", ".smf", ".rmi"}
 
 
 def expand(patterns: list[str]) -> list[Path]:
-    """Turn what the user typed into a list of files.
+    r"""Turn what the user typed into a list of files.
 
     Unix shells expand ``*.mid`` before the program ever sees it. **Windows does
     not** — cmd and PowerShell hand the literal string over and expect the program
@@ -159,6 +159,23 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("-n", "--dry-run", action="store_true",
                        help="say what would change, write nothing")
 
+    gui = sub.add_parser(
+        "gui", help="open the grid window",
+        description="The same grid as `seq cat`, in a window you can scroll and "
+                    "zoom. Step 3: look, don't touch - editing is step 4. Needs "
+                    "DearPyGui (pip install -e \".[gui]\").")
+    gui.add_argument("file", nargs="?", help="a .mid to open (default: an empty song)")
+    gui.add_argument("-t", "--track", type=int, default=None,
+                     help="track index (default: the first one with notes)")
+    gui.add_argument("-z", "--zoom", type=_zoom, default=Zoom(16),
+                     help="1/4, 1/8, 1/16, 1/32, 1/64  (default 1/16)")
+    gui.add_argument("-b", "--bar", type=int, default=1,
+                     help="start with this bar at the left edge")
+    gui.add_argument("--no-ghosts", action="store_true",
+                     help="don't show other tracks behind this one")
+    gui.add_argument("--middle-c", choices=sorted(MIDDLE_C), default="c4",
+                     help="octave labelling: c4 scientific (default), c3 Yamaha, c5 FL")
+
     return p
 
 
@@ -176,6 +193,16 @@ def main(argv: list[str] | None = None) -> int:
         return _build(args)
     if args.command == "check":
         return _check(args)
+    if args.command == "gui":
+        try:
+            from ..ui_gui.app import launch
+        except ImportError as exc:
+            print(f"seq gui: {exc}\nThe window needs DearPyGui: "
+                  f"pip install -e \".[gui]\"", file=sys.stderr)
+            return 1
+        return launch(args.file, track=args.track, zoom=args.zoom,
+                      middle_c_octave=MIDDLE_C[args.middle_c],
+                      ghosts=not args.no_ghosts, bar=args.bar)
 
     path = Path(args.file)
     if not path.exists():

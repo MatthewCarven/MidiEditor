@@ -588,3 +588,81 @@ but our six workers were each still about 80 % busy, so the real cost is
 `check_one`'s quadratic diff (`x not in after[key]` over lists, per field):
 about a second per file with a few thousand notes. Logged in the TODO; a
 `Counter` multiset diff is the fix.
+
+## 2026-10-18 — Step 3 built: the window
+
+Matthew moved `midis/` out and ran `git init`; first commit 8d64db2 is the
+project as it stood before any step-3 code, so the history starts clean.
+Then the shell, in one session. 179 tests pass (32 new for the GUI layer,
+none of which open a window).
+
+### What went in
+
+```
+midiseq/
+  core/index.py      NoteIndex / SongIndex — the notes touching [lo, hi)
+  ui_gui/paint.py    Layout + plan(): matrix → Rect/Line/Label by *role*. No dpg.
+  ui_gui/painter.py  DpgPainter: one primitive, one draw call. Takes dpg as an arg.
+  ui_gui/grid.py     GridWidget: scroll, two zooms, track, ghosts, hover, status. No dpg.
+  ui_gui/app.py      GridApp: window, File/View menus, keys, file dialog, frames.
+  ui_gui/__main__.py python -m midiseq.ui_gui
+  cli/seq.py         seq gui FILE [-t] [-z] [-b] [--no-ghosts] [--middle-c]
+```
+
+The boundary is the point. `paint.py` is tested the way `glyphs.py` is: load
+`bluesy.mid`, lay out bars 9–14, and assert the picture — ten note rectangles
+and ten heads, the dyad sharing a column, the loud G4 painted `note_loud` at
+bar 9 beat 2, the C4 stopping short of its fourth cell's edge, the `~` on the
+F4 row and nowhere else, bar 11 twelve cells wide against sixteen, nothing
+painted past the right edge. A tripwire asserts the module imports no
+toolkit. `painter.py` is tested with a recorder standing in for DearPyGui
+(PySynthRack's mocked-dpg idiom): every primitive becomes exactly one call,
+with the colour its role maps to; an unknown role paints magenta rather than
+raising, so a typo is visible instead of fatal.
+
+**The index.** Sorted starts plus the running maximum of end: `bisect_left`
+on the ends for the first note whose prefix could reach `lo`, `bisect_left`
+on the starts for the first at or past `hi`, exact test in between, results
+put back in the track's own order so the picture is identical to the scan's
+— including which of two overlapping notes wins a square. It keys on a new
+`Track.version` (excluded from equality) that `Command._apply` bumps, which
+is the one place notes change, so the GUI never invalidates anything by
+hand. `GridView(song, zoom, index)` and `render(..., index=)` take it
+optionally; `seq cat` carries on scanning.
+
+**Found on the way: a zero-length note on a window's first tick was
+invisible.** The scan's `end > lo` excluded it, which breaks "nothing ever
+vanishes for being too short to draw" (PLAN.md §6). Now `sounds_in()` in
+`index.py` is the one definition, used by the scan and the index both: a
+zero-length note counts where it sits, `lo` included, and an inverted range
+holds nothing. The index tests pin the index to that definition on random
+songs with notes up to fifty bars long.
+
+**`Cell.end_fill`** is new: the fraction of its last cell a note covers
+(clamped to a tenth so a zero-length note keeps a sliver). The GUI stops the
+rectangle there; the glyphs ignore it, because the tie already tells that
+story honestly. `CellSpan.fills_last_cell` had promised this since step 1.
+
+**The widget** keeps PySynthRack's lesson as structure: zoom is
+`Layout.cell_w`, a number the plan reads. No font scale, no widget resize,
+nothing to feed back. The window's size comes from the viewport's *client*
+area (the viewport's own height includes the decorations and clipped the
+lane in the spike). The musical zoom keeps the left edge on the same tick.
+Hover is its own layer, so moving the mouse never repaints the grid.
+
+### Decided
+
+- **ASCII labels throughout.** DearPyGui's default font paints anything above
+  U+00FF as `?`; `C#4` reads fine and the text view already has `--ascii`.
+- **The meter is printed only where it changes** in the window (`11 (3/4)`,
+  then `12`), and on the first visible bar when it isn't 4/4. The text view
+  prints it on every bar; one of them should move. Open in the TODO.
+- **The lane labels pp / p / mf / f**, as PLAN.md §2 draws them; six labels
+  overlap at this height.
+
+### Not yet
+
+No scrollbars (the ruler is the only position cue — an overview strip is
+the better idea), no playhead, no editing, no selection. Step 4 waits on
+Matthew's eyes: `seq gui examples/bluesy.mid -t 2 -b 9`, then a real file of
+his through File > Open.

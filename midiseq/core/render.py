@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .grid import Bar, GridView, Zoom
+from .index import SongIndex
 from .model import (
     DEFAULT_MIDDLE_C_OCTAVE,
     Song,
@@ -93,6 +94,11 @@ class Cell:
     velocity: int = 0
     off_grid: bool = False
     selected: bool = False
+    #: How much of this cell the note actually covers, for the last cell of a
+    #: note only (1.0 everywhere else). The GUI draws a rectangle that stops
+    #: where the note stops rather than at the cell boundary; the glyphs never
+    #: look at it, because the tie already tells that story honestly.
+    end_fill: float = 1.0
 
     @property
     def is_note(self) -> bool:
@@ -195,6 +201,7 @@ def render(
     selection: set[int] | None = None,
     middle_c_octave: int = DEFAULT_MIDDLE_C_OCTAVE,
     occupied_rows_only: bool = False,
+    index: SongIndex | None = None,
 ) -> Matrix:
     """Build the cell-state matrix for one track.
 
@@ -208,7 +215,9 @@ def render(
 
     zoom = zoom or Zoom(16)
     selection = selection or set()
-    view = GridView(song, zoom)
+    # ``index`` is a SongIndex a UI keeps across repaints; without one every
+    # track is scanned, which is fine for a single print.
+    view = GridView(song, zoom, index)
     track = song.tracks[track_index]
 
     # -- columns ----------------------------------------------------------
@@ -328,6 +337,11 @@ def _paint(note, view: GridView, rows, row_of, col_of, selection, *, ghost: bool
     head_event = Event.GHOST_HEAD if ghost else Event.HEAD
     body_event = Event.GHOST_SUSTAIN if ghost else Event.SUSTAIN
 
+    # The fraction of the last cell the note really covers. A zero-length note
+    # still gets a sliver, because nothing ever vanishes for being too short.
+    tpc = view.ticks_per_cell
+    end_fill = max(0.1, min(1.0, (note.end - span.last_cell * tpc) / tpc))
+
     for c in range(span.first_cell, span.last_cell + 1):
         ci = col_of.get(c)
         if ci is None:
@@ -343,6 +357,7 @@ def _paint(note, view: GridView, rows, row_of, col_of, selection, *, ghost: bool
         cell.velocity = note.velocity
         cell.off_grid = span.off_grid
         cell.selected = (not ghost) and note.nid in selection
+        cell.end_fill = end_fill if c == span.last_cell else 1.0
 
 
 __all__ = [

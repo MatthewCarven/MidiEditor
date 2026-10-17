@@ -1,0 +1,8 @@
+# Text files normalise to LF in the repository; Windows checkouts may still see
+# CRLF in the working copy (core.autocrlf), which is fine. The binaries must
+# never be touched.
+* text=auto
+*.mid binary
+*.midi binary
+*.png binary
+*.wav binary

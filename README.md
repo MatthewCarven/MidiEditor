@@ -6,15 +6,17 @@ note starts there.
 
 **Design and reasoning: [PLAN.md](PLAN.md). Progress: [TODO.md](TODO.md).**
 
-Steps 1 and 2 are done: the `core/` skeleton, the `.mid` writer, and text
-editing that round-trips. There is no GUI yet — that's step 3.
+Steps 1 to 3 are done: the `core/` skeleton, the `.mid` writer, text editing
+that round-trips, and a window that shows the grid. The window doesn't edit
+yet — that's step 4, and it waits until the picture has been judged readable.
 
 ## Try it
 
 ```
-pip install -e .
+pip install -e ".[gui]"
 python tools/make_demo.py examples/bluesy.mid
 seq cat examples/bluesy.mid -t 2 -b 9-11 -w 3
+seq gui examples/bluesy.mid -t 2 -b 9
 ```
 
 If `seq` isn't found after installing — common on Windows, where pip's `Scripts`
@@ -79,7 +81,32 @@ seq cat   FILE [-t TRACK] [-z 1/8] [-b 9-12] [-g] [--full] [--ascii]
 seq stat  FILE
 seq check FILE...            does it survive a round trip?
 seq build FILE [-i SOURCE] [-o OUT] [-n]
+seq gui   [FILE] [-t TRACK] [-z 1/16] [-b BAR] [--no-ghosts] [--middle-c c3|c4|c5]
 ```
+
+## The window
+
+`seq gui song.mid` opens the same grid in a DearPyGui window (`python -m
+midiseq gui` or `python -m midiseq.ui_gui` do the same). It shows one track
+with the others as grey ghosts, the ruler with the meter where it changes, the
+`~` flag on approximate rows, and the velocity lane. Hover a square and the
+status line names it: pitch, MIDI number, bar:beat.subdivision, length,
+velocity.
+
+```
+wheel                 scroll pitches        Shift+wheel        scroll time
+Ctrl+wheel            cell width            Ctrl+Shift+wheel   1/4 … 1/64
+arrows                a cell / a pitch      Ctrl+Left/Right    a bar
+PageUp/PageDown       a screen of pitches   Home / End         first / last bar
+Tab / Shift+Tab       next / previous track G                  ghosts on/off
+F                     fit the pitch range   + / -              cell width
+Ctrl+= / Ctrl+-       1/4 … 1/64            File > Open        another file
+```
+
+Zoom changes the cell width and nothing else — no font rescales, no widget
+moves — and the window's size is taken from the viewport's client area and
+nowhere else. Both are lessons from PySynthRack's zoom bug, kept here as
+structure rather than discipline.
 
 ## Editing in a text editor
 
@@ -180,9 +207,14 @@ midiseq/
     io_midi.py   mido in and out, with the passthrough bucket
     io_seq.py    .seq back in — as a diff against the source, not as the truth
     io_text.py   the .seq view
+    index.py     the notes touching a tick range, without scanning the track
     transport.py audition — a set of notes with relative timing
   audio/         sink_null now, python-rtmidi at step 5
-  ui_gui/        DearPyGui, step 3
+  ui_gui/        DearPyGui
+    paint.py     cell matrix → rectangles, lines, labels by role. No toolkit.
+    painter.py   one primitive, one draw call — takes dpg as an argument
+    grid.py      the widget's state: scroll, zooms, track, hover, status. No toolkit.
+    app.py       the window: menus, keys, file dialog, frames
   ui_tui/        Textual, step 6
   cli/           seq
 ```
@@ -193,8 +225,17 @@ midiseq/
 python -m pytest
 ```
 
-A hundred and twenty-seven tests, all on the design invariants rather than the
-plumbing.
+A hundred and seventy-nine tests, all on the design invariants rather than the
+plumbing, and none of them opens a window.
+
+Step 3's tests judge the *picture* without a toolkit: lay out bars 9–14 of the
+demo file and assert ten note rectangles with ten heads, the dyad sharing a
+column, the loud G4 painted loud at bar 9 beat 2, a note stopping where it
+stops rather than at the cell edge, the `~` on the F4 row and nowhere else,
+the 3/4 bar twelve cells wide against sixteen, and nothing painted past the
+right edge. The DearPyGui glue is tested with a recorder in place of
+DearPyGui: every primitive becomes exactly one call, with the colour its role
+maps to. The note index is pinned to the scan it replaced on random songs.
 
 Step 1 covers the cell grammar, off-grid honesty, tempo changes costing the grid
 nothing, meter changes narrowing bars but not cells, undo round-trips, chromatic

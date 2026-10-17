@@ -156,6 +156,11 @@ class Track:
     #: silence after the last note". Dropped on load, restored on save.
     end_tick_hint: int | None = None
 
+    #: Bumped by ``Command._apply`` whenever ``notes`` changes. The note index
+    #: (core/index.py) keys its cache on it. Not part of equality: two tracks
+    #: with the same notes are the same track, however they got there.
+    version: int = field(default=0, compare=False, repr=False)
+
     @property
     def is_drums(self) -> bool:
         """Channel 10 (0-indexed 9) means percussion — the grid swaps note names

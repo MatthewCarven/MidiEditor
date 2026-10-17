@@ -218,28 +218,45 @@ one layer up: **only what you actually changed changes.**
       hit-test. Tubular Bells (1,087 bars, 37k notes, 38 tracks), repainting
       on every frame while scrolling: dpg draw 5 ms p50 / 13.5 p95, render.py
       7.8 ms p50 / 32 max, 67 fps p50. Numbers and screenshots in WORKLOG.
-- [ ] **For Matthew — eyes:** run the spike and look.
-      `python tools/spike_dpg_grid.py examples/bluesy.mid -t 2 --bar 9`
-      (wheel = pitches, Shift+wheel = time, Ctrl+wheel = cell width,
-      Ctrl+Shift+wheel = 1/4…1/64, hover names the cell, Esc quits).
-- [ ] **Index the notes.** `GridView.notes_in_cell_range` scans every note of
-      every track on every repaint, and ghosts multiply it by the track count;
-      on the big file render.py costs more than the drawing does. Sort by
-      start and bisect, or bucket by bar. `render()`'s contract stays.
-- [ ] Grid as one drawlist inside a child window; scroll offsets and the cell
-      pixel size (= zoom) owned by the grid widget, never by the global font
+- [x] **Index the notes** — `core/index.py`, 2026-10-18. Sorted starts plus
+      the running maximum of end, two bisects per query; same notes, same
+      order as the scan (tested against it on random songs). Keyed on a new
+      `Track.version` that `Command._apply` bumps, so nothing has to remember
+      to invalidate. Found and fixed on the way: a zero-length note sitting
+      exactly on a window's first tick was invisible to the old scan.
+- [x] **Built 2026-10-18 — the shell.** `seq gui FILE` / `python -m
+      midiseq.ui_gui FILE`: `ui_gui/paint.py` (the dpg-free paint plan),
+      `painter.py` (plan → draw calls, tested with a recorder),
+      `grid.py` (scroll, two zooms, track, ghosts, hover, the status line —
+      no dpg), `app.py` (window, File/View menus, keys, the file dialog).
+      32 GUI tests, suite at 179.
+- [ ] **For Matthew — eyes, the step-3 test point:** run it and look.
+      `seq gui examples/bluesy.mid -t 2 -b 9` (or `python -m midiseq gui …`).
+      Wheel = pitches, Shift+wheel = time, Ctrl+wheel = cell width,
+      Ctrl+Shift+wheel = 1/4…1/64, Tab = next track, G = ghosts, F = fit,
+      Home/End, hover names the cell. Then a real file of yours with File >
+      Open. Does it feel right? Is it readable? Say what fights you.
+- [x] Grid as one drawlist (two layers: grid, hover); scroll offsets and the
+      cell pixel size (= zoom) owned by `GridWidget`, never by the global font
       scale (PySynthRack's zoom/size feedback bug is the cautionary tale)
-- [ ] **Virtualised paint**: only draw cells inside the visible rect, so speed is
-      independent of song length. Paint note *spans*, not cells — one rect per
-      note, a head mark at its first cell
-- [ ] A dpg-free "paint plan" layer (matrix → list of rects/labels) so the
-      painter is tested without a window; the drawlist glue stays thin
-- [ ] Accidental row shading, ghost track rendering, the `~` gutter flag
-- [ ] Velocity lane with pp/p/mf/f axis
-- [ ] Zoom (1/4 … 1/64 as cells-per-beat, plus pixel size), Ctrl+wheel
-- [ ] A font range for ♭/♯ and box characters, or ASCII labels throughout —
-      DPG's default font paints anything above U+00FF as `?`
-- [ ] **Test:** does it feel right, is it readable — judge before interaction exists
+- [x] **Virtualised paint**: render.py builds only the visible bars and pitch
+      rows, the plan lays out only those; note *spans*, one rect per note with
+      a head mark, stopping where the note stops (`Cell.end_fill`)
+- [x] A dpg-free "paint plan" layer (matrix → rects/lines/labels by *role*)
+      tested without a window; the drawlist glue is forty lines
+- [x] Accidental row shading, ghost track rendering, the `~` gutter flag
+- [x] Velocity lane with the pp/p/mf/f axis
+- [x] Zoom (1/4 … 1/64 as cells-per-beat, plus pixel size), Ctrl+wheel and
+      Ctrl+Shift+wheel; the musical zoom keeps the left edge on the same tick
+- [x] **Decided: ASCII labels throughout** (`C#4`, not `C♯4`) — DPG's default
+      font paints anything above U+00FF as `?`, and the text view already has
+      an `--ascii` mode. A font range for ♭/♯ is a later nicety, not a need.
+- [ ] Open: the meter label repeats on *every* bar in the text view but only
+      where it changes in the window — make the two agree one way or the other
+- [ ] Open: no scrollbars yet — position is only visible in the ruler. A thin
+      overview strip (where am I in the song) would do more than scrollbars
+- [ ] **Test:** does it feel right, is it readable — judge before interaction
+      exists. **For Matthew**, see above.
 
 ## Step 4 — GUI editing
 

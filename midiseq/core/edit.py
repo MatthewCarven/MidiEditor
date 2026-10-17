@@ -92,6 +92,9 @@ class Command:
             track.notes = [n for n in track.notes if n.nid not in gone]
         track.notes.extend(diff.added)
         track.notes.sort(key=lambda n: (n.start, n.pitch))
+        # The one place notes change. The note index (core/index.py) keys its
+        # cache on this, so nothing else has to remember to invalidate it.
+        track.version += 1
 
     # -- audition ---------------------------------------------------------
 

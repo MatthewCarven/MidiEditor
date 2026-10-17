@@ -1,32 +1,36 @@
-"""The window - step 3's shell.
+"""The window.
 
-A grid you can scroll and zoom, a ruler, a velocity lane, a status line that
-names the cell under the mouse, a File menu to open another file, and a View
-menu for the track, the ghosts and the octave convention. **No editing.**
-That is step 4, and it waits until this picture has been judged readable
-(PLAN.md §14: readability is the expensive thing to change later).
+Step 3 made it a shell: a grid you can scroll and zoom, a ruler, a velocity
+lane, a status line that names the cell under the mouse, File and View
+menus. Step 4 made it an editor: the mouse model from PLAN.md §11 (click
+empty to insert and hear it, drag to move, right-click to delete, Shift+drag
+to marquee, Ctrl to ignore snap, drag an edge to resize), a selection, undo,
+an Edit menu and a Notes menu generated from the command registry, a
+command palette on Ctrl+P, and New / Save / Save As with an unsaved-changes
+guard.
 
     seq gui song.mid -t 2
     python -m midiseq.ui_gui song.mid
 
 Mouse: wheel scrolls pitches, Shift+wheel scrolls time, Ctrl+wheel changes
-the cell width. Hover names the cell. One modifier per gesture, never two:
-the first thing Matthew's eyes found (2026-10-18) was that Ctrl+Shift+wheel
-and Ctrl+wheel did the same thing on his machine, so the musical zoom lives
-on keys instead.
+the cell width. Hover names the cell. One modifier per gesture, never two.
 
-Keys: ``.`` and ``,`` zoom the grid finer and coarser (1/4 ... 1/64 - the
-zoom PLAN.md §6 means, the one that changes what a cell is), also Ctrl+= and
-Ctrl+-; + and - change the cell width; arrows move a cell or a pitch,
-Ctrl+Left/Right a bar, PageUp/PageDown a screen of pitches, Home/End the
-first/last bar; Tab and Shift+Tab change track; G toggles ghosts; F fits the
-pitch range; Ctrl+Q quits.
+Keys: ``.`` and ``,`` zoom the grid finer and coarser (1/4 ... 1/64), also
+Ctrl+= and Ctrl+-; + and - change the cell width; arrows move a cell or a
+pitch, or - with a selection - move the notes (Up/Down transposes,
+Shift+Up/Down by scale degree); Ctrl+Left/Right a bar, PageUp/PageDown a
+screen of pitches, Home/End the first/last bar; Tab and Shift+Tab change
+track; G toggles ghosts; F fits the pitch range; A toggles audition; Q
+quantises the selection to the grid; Del deletes it; Esc deselects; Ctrl+Z /
+Ctrl+Y undo and redo; Ctrl+A selects all; Ctrl+P the palette; Ctrl+N / O / S
+/ Shift+S new, open, save, save as; Ctrl+Q quits.
 
 Everything DearPyGui-specific is in this file and ``painter.py``. The state
-is ``grid.GridWidget`` and the picture is ``paint.plan``; both run without a
-window and are tested that way. Two rules from the spike hold here: zoom
-changes the cell width and nothing else (no font scale, no widget resize), and
-the window's size comes from the viewport's client area and nowhere else.
+is ``grid.GridWidget``, the editing is ``editor.Editor`` and the picture is
+``paint.plan``; all three run without a window and are tested that way. Two
+rules from the spike hold here: zoom changes the cell width and nothing else
+(no font scale, no widget resize), and the window's size comes from the
+viewport's client area and nowhere else.
 """
 
 from __future__ import annotations
@@ -35,10 +39,13 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Callable
 
 import dearpygui.dearpygui as dpg
 
+from ..audio.sink_null import NullSink
 from ..core import io_midi
+from ..core.edit import REGISTRY
 from ..core.grid import Zoom
 from ..core.model import (
     DEFAULT_MIDDLE_C_OCTAVE,
@@ -48,6 +55,7 @@ from ..core.model import (
     Song,
     Track,
 )
+from .editor import PROMPTS, Editor, MenuEntry, edit_menu, menu_sections, palette
 from .grid import GridWidget
 from .painter import DpgPainter
 
@@ -59,16 +67,28 @@ FLASH_SECONDS = 5.0
 WINDOW = "midiseq_window"
 DRAWLIST = "midiseq_grid"
 LAYER_GRID = "midiseq_grid_layer"
+LAYER_GESTURE = "midiseq_gesture_layer"
 LAYER_HOVER = "midiseq_hover_layer"
 STATUS = "midiseq_status"
 TRACK_MENU = "midiseq_track_menu"
 GHOSTS_ITEM = "midiseq_ghosts_item"
+AUDITION_ITEM = "midiseq_audition_item"
+UNDO_ITEM = "midiseq_menu_edit.undo"
+REDO_ITEM = "midiseq_menu_edit.redo"
 FILE_DIALOG = "midiseq_file_dialog"
+SAVE_DIALOG = "midiseq_save_dialog"
+PROMPT = "midiseq_prompt"
+PALETTE = "midiseq_palette"
+PALETTE_INPUT = "midiseq_palette_input"
+PALETTE_LIST = "midiseq_palette_list"
+CONFIRM = "midiseq_confirm"
+MODALS = (PROMPT, PALETTE, CONFIRM)
 
 
 # --------------------------------------------------------------------------
 # Keys. DearPyGui renamed several constants between 1.x and 2.x; resolving by
-# name keeps the app running on whichever is installed.
+# name keeps the app running on whichever is installed. The editor gets
+# names, not codes.
 # --------------------------------------------------------------------------
 
 def _key(*names: str) -> int | None:
@@ -100,19 +120,27 @@ def shift_down() -> bool:
     return _any_down("mvKey_LShift", "mvKey_RShift", "mvKey_Shift", "mvKey_ModShift")
 
 
-KEYS = {
-    "left": _key("mvKey_Left"), "right": _key("mvKey_Right"),
-    "up": _key("mvKey_Up"), "down": _key("mvKey_Down"),
-    "pgup": _key("mvKey_Prior", "mvKey_PageUp"), "pgdn": _key("mvKey_Next", "mvKey_PageDown"),
-    "home": _key("mvKey_Home"), "end": _key("mvKey_End"),
-    "tab": _key("mvKey_Tab"), "g": _key("mvKey_G"), "f": _key("mvKey_F"), "q": _key("mvKey_Q"),
-    "plus": _key("mvKey_Plus", "mvKey_Equal"), "add": _key("mvKey_Add"),
-    "minus": _key("mvKey_Minus"), "subtract": _key("mvKey_Subtract"),
-    "period": _key("mvKey_Period"), "comma": _key("mvKey_Comma"),
+_KEY_SPECS = {
+    "left": ("mvKey_Left",), "right": ("mvKey_Right",), "up": ("mvKey_Up",), "down": ("mvKey_Down",),
+    "pgup": ("mvKey_Prior", "mvKey_PageUp"), "pgdn": ("mvKey_Next", "mvKey_PageDown"),
+    "home": ("mvKey_Home",), "end": ("mvKey_End",), "tab": ("mvKey_Tab",),
+    "escape": ("mvKey_Escape",), "delete": ("mvKey_Delete",),
+    "backspace": ("mvKey_Back", "mvKey_Backspace"), "enter": ("mvKey_Return", "mvKey_Enter"),
+    "plus": ("mvKey_Plus", "mvKey_Equal"), "add": ("mvKey_Add",),
+    "minus": ("mvKey_Minus",), "subtract": ("mvKey_Subtract",),
+    "period": ("mvKey_Period",), "comma": ("mvKey_Comma",),
+    "a": ("mvKey_A",), "f": ("mvKey_F",), "g": ("mvKey_G",), "n": ("mvKey_N",), "o": ("mvKey_O",),
+    "p": ("mvKey_P",), "q": ("mvKey_Q",), "s": ("mvKey_S",), "y": ("mvKey_Y",), "z": ("mvKey_Z",),
 }
-#: Keys that act once per press, however long they're held.
-ONE_SHOT = {KEYS[k] for k in ("tab", "g", "f", "q", "plus", "add", "minus", "subtract",
-                              "period", "comma") if KEYS[k] is not None}
+KEY_NAMES: dict[int, str] = {}
+for _name, _attrs in _KEY_SPECS.items():
+    _code = _key(*_attrs)
+    if _code is not None:
+        KEY_NAMES.setdefault(_code, _name)
+
+#: Keys that act once per press, however long they're held. Arrows repeat.
+ONE_SHOT = {"tab", "f", "g", "q", "a", "n", "o", "p", "s", "y", "z", "plus", "add", "minus",
+            "subtract", "period", "comma", "escape", "delete", "backspace", "enter"}
 
 
 # --------------------------------------------------------------------------
@@ -126,17 +154,27 @@ class GridApp:
                  width: int = 1280, height: int = 760) -> None:
         self.song = song
         self.path = path
+        self.sink = NullSink(keep_log=False)
         self.widget = GridWidget(song, track, zoom, ghosts=ghosts, middle_c_octave=middle_c_octave)
+        self.editor = Editor(self.widget, self.sink)
         self.painter = DpgPainter(dpg)
         self.width, self.height = width, height
-        self._held: set[int] = set()
+        self._held: set[str] = set()
+        self._down: set[int] = set()
         self._flash: tuple[str, float] | None = None
         self._status_shown = ""
+        self._title_shown = ""
+        self._undo_labels = ("", "")
+        self._palette_query: str | None = None
+        self._palette_entries: list[MenuEntry] = []
+        self._after_save: Callable[[], None] | None = None
 
     # -- building -----------------------------------------------------------
 
     def _title(self) -> str:
-        return f"midiseq - {self.path.name}" if self.path else "midiseq"
+        name = self.path.name if self.path else "untitled"
+        star = "*" if self.editor.dirty_since_save else ""
+        return f"midiseq - {name}{star}"
 
     def build(self) -> None:
         dpg.create_context()
@@ -146,9 +184,38 @@ class GridApp:
                         no_scrollbar=True):
             with dpg.menu_bar():
                 with dpg.menu(label="File"):
-                    dpg.add_menu_item(label="Open...", callback=lambda: dpg.show_item(FILE_DIALOG))
+                    dpg.add_menu_item(label="New    Ctrl+N", callback=lambda: self._guard(self.new))
+                    dpg.add_menu_item(label="Open...    Ctrl+O",
+                                      callback=lambda: self._guard(lambda: dpg.show_item(FILE_DIALOG)))
                     dpg.add_separator()
-                    dpg.add_menu_item(label="Quit    Ctrl+Q", callback=lambda: dpg.stop_dearpygui())
+                    dpg.add_menu_item(label="Save    Ctrl+S", callback=lambda: self.save())
+                    dpg.add_menu_item(label="Save as...    Ctrl+Shift+S", callback=lambda: self.save_as())
+                    dpg.add_separator()
+                    dpg.add_menu_item(label="Quit    Ctrl+Q",
+                                      callback=lambda: self._guard(dpg.stop_dearpygui))
+                with dpg.menu(label="Edit"):
+                    for e in edit_menu():
+                        if e.key == "edit.audition":
+                            dpg.add_menu_item(label=f"{e.label}    {e.shortcut}", check=True,
+                                              tag=AUDITION_ITEM,
+                                              default_value=self.editor.transport.audition_enabled,
+                                              callback=lambda s, a: self._set_audition(bool(a)))
+                            continue
+                        dpg.add_menu_item(label=self._menu_label(e), user_data=e.key,
+                                          tag=f"midiseq_menu_{e.key}", callback=self._on_entry)
+                        if e.key == "edit.redo":
+                            dpg.add_separator()
+                    dpg.add_separator()
+                    dpg.add_menu_item(label="Command palette...    Ctrl+P",
+                                      callback=lambda: self.open_palette())
+                with dpg.menu(label="Notes"):
+                    for i, (name, entries) in enumerate(menu_sections()):
+                        if i:
+                            dpg.add_separator()
+                        dpg.add_menu_item(label=f"- {name} -", enabled=False)
+                        for e in entries:
+                            dpg.add_menu_item(label=self._menu_label(e), user_data=e.key,
+                                              callback=self._on_entry)
                 with dpg.menu(label="View"):
                     dpg.add_menu_item(label="Finer grid (1/4 .. 1/64)    .   Ctrl+=",
                                       callback=lambda: self.widget.zoom_finer())
@@ -163,7 +230,8 @@ class GridApp:
                     dpg.add_menu_item(label="Ghost tracks    G", check=True, tag=GHOSTS_ITEM,
                                       default_value=self.widget.ghosts,
                                       callback=lambda s, a: self.widget.set_ghosts(bool(a)))
-                    dpg.add_menu_item(label="Fit pitch range    F", callback=lambda: self.widget.fit_pitch_range())
+                    dpg.add_menu_item(label="Fit pitch range    F",
+                                      callback=lambda: self.widget.fit_pitch_range())
                     dpg.add_separator()
                     with dpg.menu(label="Track    Tab", tag=TRACK_MENU):
                         pass
@@ -175,23 +243,32 @@ class GridApp:
                                               callback=lambda s, a, u: self.widget.set_middle_c(u))
             with dpg.drawlist(width=self.width, height=max(1, self.height - STATUS_H - 30), tag=DRAWLIST):
                 dpg.add_draw_layer(tag=LAYER_GRID)
+                dpg.add_draw_layer(tag=LAYER_GESTURE)
                 dpg.add_draw_layer(tag=LAYER_HOVER)
             dpg.add_text("", tag=STATUS, indent=6)
         dpg.set_primary_window(WINDOW, True)
         self._rebuild_track_menu()
 
+        start_dir = str(self.path.parent) if self.path else ""
         with dpg.file_dialog(directory_selector=False, show=False, modal=True,
                              callback=self._on_file_chosen, tag=FILE_DIALOG,
-                             width=720, height=420,
-                             default_path=str(self.path.parent) if self.path else ""):
+                             width=720, height=420, default_path=start_dir):
+            dpg.add_file_extension(".mid", color=(230, 170, 60, 255))
+            dpg.add_file_extension(".*")
+        with dpg.file_dialog(directory_selector=False, show=False, modal=True,
+                             callback=self._on_save_chosen, tag=SAVE_DIALOG,
+                             width=720, height=420, default_path=start_dir,
+                             default_filename="untitled"):
             dpg.add_file_extension(".mid", color=(230, 170, 60, 255))
             dpg.add_file_extension(".*")
 
         with dpg.handler_registry():
             dpg.add_mouse_wheel_handler(callback=self._on_wheel)
+            dpg.add_mouse_down_handler(callback=self._on_mouse_down)
+            dpg.add_mouse_release_handler(callback=self._on_mouse_release)
+            dpg.add_mouse_move_handler(callback=self._on_move)
             dpg.add_key_press_handler(callback=self._on_key)
             dpg.add_key_release_handler(callback=self._on_key_release)
-            dpg.add_mouse_move_handler(callback=self._on_move)
 
         with dpg.theme() as flush:
             with dpg.theme_component(dpg.mvWindowAppItem):
@@ -203,6 +280,10 @@ class GridApp:
         dpg.show_viewport()
         dpg.render_dearpygui_frame()
         self._on_resize()
+
+    @staticmethod
+    def _menu_label(e: MenuEntry) -> str:
+        return f"{e.label}    {e.shortcut}" if e.shortcut else e.label
 
     def _rebuild_track_menu(self) -> None:
         dpg.delete_item(TRACK_MENU, children_only=True)
@@ -219,7 +300,23 @@ class GridApp:
             if dpg.does_item_exist(tag):
                 dpg.set_value(tag, i == self.widget.track)
 
-    # -- opening files --------------------------------------------------------
+    # -- songs: new, open, save ----------------------------------------------------
+
+    def _install(self, song: Song, path: Path | None) -> None:
+        old = self.widget
+        widget = GridWidget(song, None, old.zoom, ghosts=old.ghosts,
+                            middle_c_octave=old.middle_c_octave, layout=old.layout)
+        widget.resize(old.width, old.height)
+        self.song, self.path, self.widget = song, path, widget
+        self.editor = Editor(widget, self.sink)
+        if dpg.does_item_exist(AUDITION_ITEM):
+            dpg.set_value(AUDITION_ITEM, True)
+        self._rebuild_track_menu()
+        self._update_title()
+
+    def new(self) -> None:
+        self._install(empty_song(), None)
+        self.flash("new song: one empty track")
 
     def open(self, path: str | Path) -> bool:
         path = Path(path)
@@ -228,27 +325,162 @@ class GridApp:
         except Exception as exc:  # noqa: BLE001 - UI boundary
             self.flash(f"could not read {path.name}: {exc}")
             return False
-        old = self.widget
         try:
-            widget = GridWidget(song, None, old.zoom, ghosts=old.ghosts,
-                                middle_c_octave=old.middle_c_octave, layout=old.layout)
+            self._install(song, path)
         except ValueError as exc:
             self.flash(f"{path.name}: {exc}")
             return False
-        self.song, self.path, self.widget = song, path, widget
-        widget.resize(old.width, old.height)
-        dpg.set_viewport_title(self._title())
-        self._rebuild_track_menu()
         self.flash(f"opened {path.name}: {len(song.tracks)} tracks")
         return True
+
+    def save(self) -> bool:
+        if self.path is None:
+            self.save_as()
+            return False
+        try:
+            io_midi.save(self.song, self.path)
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self.flash(f"could not save {self.path.name}: {exc}")
+            return False
+        self.editor.mark_saved()
+        self.flash(f"saved {self.path.name}")
+        self._update_title()
+        return True
+
+    def save_as(self) -> None:
+        dpg.show_item(SAVE_DIALOG)
 
     def _on_file_chosen(self, sender, app_data) -> None:
         chosen = (app_data or {}).get("file_path_name")
         if chosen:
             self.open(chosen)
 
+    def _on_save_chosen(self, sender, app_data) -> None:
+        chosen = (app_data or {}).get("file_path_name")
+        if not chosen:
+            return
+        path = Path(chosen)
+        if path.suffix.lower() not in (".mid", ".midi"):
+            path = path.with_suffix(".mid")
+        self.path = path
+        if self.save() and self._after_save is not None:
+            after, self._after_save = self._after_save, None
+            after()
+
+    def _guard(self, then: Callable[[], None]) -> None:
+        """Run ``then`` now, or after the unsaved-changes question."""
+        if not self.editor.dirty_since_save:
+            then()
+            return
+        self._close_modal()
+        name = self.path.name if self.path else "this song"
+
+        def save_then() -> None:
+            self._close_modal()
+            if self.path is None:
+                self._after_save = then
+                self.save_as()
+            elif self.save():
+                then()
+
+        def discard() -> None:
+            self._close_modal()
+            self.editor.mark_saved()
+            then()
+
+        with dpg.window(tag=CONFIRM, label="Unsaved changes", modal=True, autosize=True,
+                        no_resize=True, pos=(420, 260), on_close=lambda: self._close_modal()):
+            dpg.add_text(f"{name} has unsaved changes.")
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Save", callback=save_then)
+                dpg.add_button(label="Don't save", callback=discard)
+                dpg.add_button(label="Cancel", callback=lambda: self._close_modal())
+
+    # -- the registry's doors: menu items, prompts, the palette --------------------
+
+    def _on_entry(self, sender, app_data, user_data) -> None:
+        self.run_entry(user_data)
+
+    def run_entry(self, key: str) -> None:
+        if key in PROMPTS:
+            self._prompt(key)
+        else:
+            self.flash(self.editor.run_key(key))
+            self._sync_audition_check()
+
+    def _prompt(self, key: str) -> None:
+        if not self.editor.selection:
+            self.flash(f"{REGISTRY[key].label.rstrip('.')}: nothing selected")
+            return
+        self._close_modal()
+        fields = PROMPTS[key]
+
+        def ok() -> None:
+            raw = {name: str(dpg.get_value(f"{PROMPT}_{name}")) for name, _, _ in fields}
+            self._close_modal()
+            self.flash(self.editor.run_key(key, raw))
+
+        with dpg.window(tag=PROMPT, label=REGISTRY[key].label.rstrip("."), modal=True,
+                        autosize=True, no_resize=True, pos=(380, 220),
+                        on_close=lambda: self._close_modal()):
+            for name, caption, default in fields:
+                dpg.add_input_text(label=caption, default_value=default, width=220,
+                                   tag=f"{PROMPT}_{name}", on_enter=True, callback=lambda: ok())
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="OK", callback=lambda: ok())
+                dpg.add_button(label="Cancel", callback=lambda: self._close_modal())
+        dpg.focus_item(f"{PROMPT}_{fields[0][0]}")
+
+    def open_palette(self) -> None:
+        self._close_modal()
+        self._palette_query = None
+        with dpg.window(tag=PALETTE, label="Command palette", modal=True, no_resize=True,
+                        width=480, height=330, pos=(400, 120), on_close=lambda: self._close_modal()):
+            dpg.add_input_text(tag=PALETTE_INPUT, hint="type a command, Enter runs the first match",
+                               width=-1)
+            dpg.add_listbox(items=[], tag=PALETTE_LIST, num_items=11, width=-1,
+                            callback=lambda s, a: self._palette_pick(a))
+        dpg.focus_item(PALETTE_INPUT)
+
+    def _palette_refresh(self) -> None:
+        if not dpg.does_item_exist(PALETTE):
+            return
+        query = str(dpg.get_value(PALETTE_INPUT) or "")
+        if query == self._palette_query:
+            return
+        self._palette_query = query
+        self._palette_entries = palette(query)
+        dpg.configure_item(PALETTE_LIST, items=[self._menu_label(e) for e in self._palette_entries])
+
+    def _palette_pick(self, label: str) -> None:
+        for e in self._palette_entries:
+            if self._menu_label(e) == label:
+                self._close_modal()
+                self.run_entry(e.key)
+                return
+
+    def _palette_run_first(self) -> None:
+        self._palette_refresh()
+        if self._palette_entries:
+            key = self._palette_entries[0].key
+            self._close_modal()
+            self.run_entry(key)
+
+    def _close_modal(self) -> None:
+        for tag in MODALS:
+            if dpg.does_item_exist(tag):
+                dpg.delete_item(tag)
+
+    def _modal_open(self) -> bool:
+        if any(dpg.does_item_exist(tag) for tag in MODALS):
+            return True
+        return any(dpg.does_item_exist(tag) and dpg.is_item_shown(tag)
+                   for tag in (FILE_DIALOG, SAVE_DIALOG))
+
     def flash(self, message: str) -> None:
         """Show a message on the status line for a few seconds."""
+        if not message:
+            return
         self._flash = (message, time.perf_counter() + FLASH_SECONDS)
         self._set_status(message)
 
@@ -258,9 +490,22 @@ class GridApp:
         self.widget.set_track(index)
         self._sync_track_checks()
 
+    def _set_audition(self, on: bool) -> None:
+        self.editor.transport.audition_enabled = on
+        self.editor.message = f"Audition {'on' if on else 'off'}"
+
+    def _sync_audition_check(self) -> None:
+        if dpg.does_item_exist(AUDITION_ITEM):
+            dpg.set_value(AUDITION_ITEM, self.editor.transport.audition_enabled)
+
+    def _local_mouse(self) -> tuple[float, float]:
+        gx, gy = dpg.get_mouse_pos(local=False)
+        rx, ry = dpg.get_item_rect_min(DRAWLIST)
+        return gx - rx, gy - ry
+
     def _on_wheel(self, sender, app_data) -> None:
-        # One modifier per gesture. Ctrl wins if both are held, so a driver
-        # that eats Shift+wheel can't turn a zoom into a scroll.
+        if self._modal_open():
+            return
         direction = 1 if app_data > 0 else -1
         w = self.widget
         if ctrl_down():
@@ -270,58 +515,105 @@ class GridApp:
         else:
             w.scroll_pitches(3 * direction)
 
-    def _on_key(self, sender, app_data) -> None:
-        key = app_data
-        if key in ONE_SHOT:
-            if key in self._held:
-                return
-            self._held.add(key)
-        w, k = self.widget, KEYS
-        if key == k["left"]:
-            w.scroll_bars(-1) if ctrl_down() else w.scroll_cells(-1)
-        elif key == k["right"]:
-            w.scroll_bars(1) if ctrl_down() else w.scroll_cells(1)
-        elif key == k["up"]:
-            w.scroll_pitches(1)
-        elif key == k["down"]:
-            w.scroll_pitches(-1)
-        elif key == k["pgup"]:
-            w.scroll_pitches(w.visible_rows)
-        elif key == k["pgdn"]:
-            w.scroll_pitches(-w.visible_rows)
-        elif key == k["home"]:
-            w.go_to_bar(1)
-        elif key == k["end"]:
-            w.go_to_bar(w.view.bars.bar_containing(max(0, self.song.end_tick() - 1)).number)
-        elif key == k["tab"]:
-            n = len(self.song.tracks)
-            self._select_track((w.track + (-1 if shift_down() else 1)) % n)
-        elif key == k["g"]:
-            w.set_ghosts(not w.ghosts)
-            if dpg.does_item_exist(GHOSTS_ITEM):
-                dpg.set_value(GHOSTS_ITEM, w.ghosts)
-        elif key == k["f"]:
-            w.fit_pitch_range()
-        elif key == k["period"]:
-            w.zoom_finer()
-        elif key == k["comma"]:
-            w.zoom_coarser()
-        elif key in (k["plus"], k["add"]):
-            w.zoom_finer() if ctrl_down() else w.zoom_pixels(+1)
-        elif key in (k["minus"], k["subtract"]):
-            w.zoom_coarser() if ctrl_down() else w.zoom_pixels(-1)
-        elif key == k["q"] and ctrl_down():
-            dpg.stop_dearpygui()
+    def _on_mouse_down(self, sender, app_data) -> None:
+        button = int(app_data[0]) if isinstance(app_data, (list, tuple)) else int(app_data)
+        if button in self._down:
+            return
+        self._down.add(button)
+        if self._modal_open() or not dpg.is_item_hovered(DRAWLIST):
+            return
+        x, y = self._local_mouse()
+        self.editor.press(x, y, button, shift=shift_down(), ctrl=ctrl_down())
 
-    def _on_key_release(self, sender, app_data) -> None:
-        self._held.discard(app_data)
+    def _on_mouse_release(self, sender, app_data) -> None:
+        button = int(app_data[0]) if isinstance(app_data, (list, tuple)) else int(app_data)
+        self._down.discard(button)
+        if self.editor.gesture is not None:
+            x, y = self._local_mouse()
+            self.editor.release(x, y, button, shift=shift_down(), ctrl=ctrl_down())
 
     def _on_move(self, sender, app_data) -> None:
-        if dpg.is_item_hovered(DRAWLIST):
+        if self.editor.gesture is not None:
+            x, y = self._local_mouse()
+            self.editor.move(x, y, shift=shift_down(), ctrl=ctrl_down())
+        if dpg.is_item_hovered(DRAWLIST) and not self._modal_open():
             x, y = dpg.get_drawing_mouse_pos()
             self.widget.set_hover(x, y)
         else:
             self.widget.set_hover(None, None)
+
+    def _on_key(self, sender, app_data) -> None:
+        name = KEY_NAMES.get(app_data)
+        if name is None:
+            return
+        if name in ONE_SHOT:
+            if name in self._held:
+                return
+            self._held.add(name)
+        ctrl, shift = ctrl_down(), shift_down()
+
+        if dpg.does_item_exist(PALETTE):
+            if name == "enter":
+                self._palette_run_first()
+            elif name == "escape":
+                self._close_modal()
+            return
+        if self._modal_open():
+            if name == "escape":
+                self._close_modal()
+            return
+
+        w = self.widget
+        if ctrl and name == "q":
+            self._guard(dpg.stop_dearpygui)
+        elif ctrl and name == "n":
+            self._guard(self.new)
+        elif ctrl and name == "o":
+            self._guard(lambda: dpg.show_item(FILE_DIALOG))
+        elif ctrl and name == "s":
+            self.save_as() if shift else self.save()
+        elif ctrl and name == "p":
+            self.open_palette()
+        elif self.editor.key(name, shift=shift, ctrl=ctrl):
+            self._sync_audition_check()
+        elif name == "left":
+            w.scroll_bars(-1) if ctrl else w.scroll_cells(-1)
+        elif name == "right":
+            w.scroll_bars(1) if ctrl else w.scroll_cells(1)
+        elif name == "up":
+            w.scroll_pitches(1)
+        elif name == "down":
+            w.scroll_pitches(-1)
+        elif name == "pgup":
+            w.scroll_pitches(w.visible_rows)
+        elif name == "pgdn":
+            w.scroll_pitches(-w.visible_rows)
+        elif name == "home":
+            w.go_to_bar(1)
+        elif name == "end":
+            w.go_to_bar(w.view.bars.bar_containing(max(0, self.song.end_tick() - 1)).number)
+        elif name == "tab":
+            n = len(self.song.tracks)
+            self._select_track((w.track + (-1 if shift else 1)) % n)
+        elif name == "g":
+            w.set_ghosts(not w.ghosts)
+            if dpg.does_item_exist(GHOSTS_ITEM):
+                dpg.set_value(GHOSTS_ITEM, w.ghosts)
+        elif name == "f":
+            w.fit_pitch_range()
+        elif name == "period":
+            w.zoom_finer()
+        elif name == "comma":
+            w.zoom_coarser()
+        elif name in ("plus", "add"):
+            w.zoom_finer() if ctrl else w.zoom_pixels(+1)
+        elif name in ("minus", "subtract"):
+            w.zoom_coarser() if ctrl else w.zoom_pixels(-1)
+
+    def _on_key_release(self, sender, app_data) -> None:
+        name = KEY_NAMES.get(app_data)
+        if name is not None:
+            self._held.discard(name)
 
     def _on_resize(self, *_args) -> None:
         # Size comes from the viewport's client area and nothing else.
@@ -333,7 +625,7 @@ class GridApp:
         except Exception:  # noqa: BLE001 - before the first frame
             top = 0
         if top <= 0 or top > 80:
-            top = 24          # a menu bar's worth, if the measurement is off
+            top = 24
         grid_h = max(1, h - top - STATUS_H)
         dpg.configure_item(DRAWLIST, width=w, height=grid_h)
         self.widget.resize(w, grid_h)
@@ -345,18 +637,64 @@ class GridApp:
             self._status_shown = text
             dpg.set_value(STATUS, text)
 
+    def _update_title(self) -> None:
+        title = self._title()
+        if title != self._title_shown:
+            self._title_shown = title
+            dpg.set_viewport_title(title)
+
+    def _update_undo_labels(self) -> None:
+        labels = (self.editor.history.undo_label or "", self.editor.history.redo_label or "")
+        if labels != self._undo_labels:
+            self._undo_labels = labels
+            if dpg.does_item_exist(UNDO_ITEM):
+                dpg.set_item_label(UNDO_ITEM, f"Undo {labels[0]}    Ctrl+Z" if labels[0] else "Undo    Ctrl+Z")
+            if dpg.does_item_exist(REDO_ITEM):
+                dpg.set_item_label(REDO_ITEM, f"Redo {labels[1]}    Ctrl+Y" if labels[1] else "Redo    Ctrl+Y")
+
     def frame(self) -> None:
-        w = self.widget
+        w, ed = self.widget, self.editor
         if w.dirty:
             plan = w.build()
             self.painter.repaint(plan.items, LAYER_GRID)
+        if ed.preview_dirty:
+            self.painter.repaint(ed.preview_items(), LAYER_GESTURE)
         if w.hover_dirty:
             self.painter.repaint(w.hover_items(), LAYER_HOVER)
-            if self._flash is None:
-                self._set_status(w.status())
         if self._flash is not None and time.perf_counter() >= self._flash[1]:
             self._flash = None
-            self._set_status(w.status())
+        if self._flash is None:
+            tail = ed.status_tail()
+            self._set_status(f"{w.status()}  {tail}" if tail else w.status())
+        self._update_title()
+        self._update_undo_labels()
+        self._palette_refresh()
+
+    def _screenshot_pose(self) -> None:
+        """For ``--screenshot``: select the first note on screen and leave an
+        insert drag in progress, so the picture shows a selection outline and
+        a gesture preview as well as the grid. Nothing is committed."""
+        w, ed = self.widget, self.editor
+        m = w.matrix
+        if m is None or w.plan is None:
+            return
+        for ri, row in enumerate(m.rows[:w.plan.rows]):
+            for ci, cell in enumerate(row.cells):
+                col = m.columns[ci].cell
+                if cell.is_note and cell.nid is not None and col >= w.first_cell:
+                    x0, y0, x1, y1 = w.layout.cell_rect(ri, col, w.first_cell)
+                    ed.press((x0 + x1) / 2, (y0 + y1) / 2, 0)
+                    ed.release((x0 + x1) / 2, (y0 + y1) / 2, 0)
+                    break
+            else:
+                continue
+            break
+        row, cell = min(10, w.plan.rows - 1), w.first_cell + 20
+        if ed._note_at(row, cell) is None:
+            x0, y0, x1, y1 = w.layout.cell_rect(row, cell, w.first_cell)
+            ed.press((x0 + x1) / 2, (y0 + y1) / 2, 0)
+            ed.move((x0 + x1) / 2 + 3 * w.layout.cell_w, (y0 + y1) / 2)
+        w.set_hover(*w.layout.cell_rect(8, w.first_cell + 6, w.first_cell)[:2])
 
     def run(self, screenshot: str | None = None) -> int:
         self.build()
@@ -364,10 +702,8 @@ class GridApp:
         while dpg.is_dearpygui_running():
             if shot_frames_left is not None:
                 shot_frames_left -= 1
-                if shot_frames_left == 6 and self.widget.plan is not None:
-                    row, cell = 8, self.widget.first_cell + 6
-                    x0, y0, _, _ = self.widget.layout.cell_rect(row, cell, self.widget.first_cell)
-                    self.widget.set_hover(x0 + 2, y0 + 2)
+                if shot_frames_left == 6:
+                    self._screenshot_pose()
                 if shot_frames_left == 3:
                     dpg.output_frame_buffer(screenshot)
                 if shot_frames_left == 0:
@@ -421,7 +757,7 @@ def launch(path: str | None = None, *, track: int | None = None, zoom: Zoom = Zo
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m midiseq.ui_gui",
-                                 description="The grid window (step 3: look, don't touch).")
+                                 description="The grid window.")
     ap.add_argument("file", nargs="?", help="a .mid to open (default: an empty song)")
     ap.add_argument("-t", "--track", type=int, default=None)
     ap.add_argument("-z", "--zoom", type=int, default=16, choices=Zoom.SUPPORTED)
@@ -439,4 +775,4 @@ def main(argv: list[str] | None = None) -> int:
                   screenshot=args.screenshot)
 
 
-__all__ = ["GridApp", "launch", "main"]
+__all__ = ["GridApp", "launch", "main", "empty_song"]

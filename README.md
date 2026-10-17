@@ -6,9 +6,11 @@ note starts there.
 
 **Design and reasoning: [PLAN.md](PLAN.md). Progress: [TODO.md](TODO.md).**
 
-Steps 1 to 3 are done: the `core/` skeleton, the `.mid` writer, text editing
-that round-trips, and a window that shows the grid. The window doesn't edit
-yet — that's step 4, and it waits until the picture has been judged readable.
+Steps 1 to 4 are done: the `core/` skeleton, the `.mid` writer, text editing
+that round-trips, a window that shows the grid, and editing in that window —
+click to write notes, drag to move them, undo, and a Notes menu and a command
+palette generated from the command registry. Sound is step 5; until then every
+edit is auditioned, silently, into a null sink.
 
 ## Try it
 
@@ -114,6 +116,39 @@ Zoom changes the cell width and nothing else — no font rescales, no widget
 moves — and the window's size is taken from the viewport's client area and
 nowhere else. Both are lessons from PySynthRack's zoom bug, kept here as
 structure rather than discipline.
+
+### Editing
+
+No tool modes. What a click does depends only on what's under it:
+
+```
+    on a note                    on empty space
+  click      select + play     click      insert + play
+  drag       move it           drag       insert, drag out length
+  edge drag  resize            shift+drag marquee select
+  shift+clk  add to set        right      -
+  right      delete            ctrl+drag  ignore snap
+  right+drag erase sweep
+  ctrl+drag  ignore snap
+```
+
+Esc deselects — clicking empty space can't, because it inserts. Right-click
+deletes with no confirmation because Ctrl+Z is load-bearing: every edit is a
+command object, and an erase sweep is one undo. With a selection the arrows
+move the notes instead of the view: Up/Down a semitone, Shift+Up/Down a scale
+degree, Left/Right a cell. Q quantises the selection to the grid, Del deletes
+it, Ctrl+A selects the whole track, A toggles audition.
+
+The **Edit** and **Notes** menus are generated from the command registry in
+`core/edit.py`, and so is the **command palette** (Ctrl+P: type `inv`, get
+Invert). The Notes menu is laid out in the two groups the registry declares,
+*keeps the shape* and *moves notes independently*, so the separator teaches the
+difference before you run anything. Commands that take a parameter ask in a
+small dialog: semitones; scale degrees and a key; an axis note; a quantise
+strength; a velocity as `96`, `+10` or `x0.8`.
+
+File > New, Save and Save as write `.mid` through the same writer `seq build`
+uses, so the passthrough rule holds: nothing you didn't touch is rewritten.
 
 ## Editing in a text editor
 
@@ -221,7 +256,8 @@ midiseq/
     paint.py     cell matrix → rectangles, lines, labels by role. No toolkit.
     painter.py   one primitive, one draw call — takes dpg as an argument
     grid.py      the widget's state: scroll, zooms, track, hover, status. No toolkit.
-    app.py       the window: menus, keys, file dialog, frames
+    editor.py    the mouse model, selection, undo, audition, the registry's doors. No toolkit.
+    app.py       the window: menus, prompts, palette, keys, file dialogs, frames
   ui_tui/        Textual, step 6
   cli/           seq
 ```
@@ -232,8 +268,16 @@ midiseq/
 python -m pytest
 ```
 
-A hundred and seventy-nine tests, all on the design invariants rather than the
+Two hundred and twenty-two tests, all on the design invariants rather than the
 plumbing, and none of them opens a window.
+
+Step 4's tests drive the mouse model with coordinates: a click on empty
+inserts one cell and plays it, a drag draws the length out, Ctrl ignores snap
+by sixty ticks, a drag on a note moves the whole selection and plays the
+landing, an edge drag resizes, a marquee picks up bar 9's five notes and not
+the ghost, a right-drag sweep deletes two notes as one undo, Q quantises the
+off-grid F4 onto the bar line, and a bad value typed into a prompt comes back
+as a sentence rather than a traceback.
 
 Step 3's tests judge the *picture* without a toolkit: lay out bars 9–14 of the
 demo file and assert ten note rectangles with ten heads, the dyad sharing a

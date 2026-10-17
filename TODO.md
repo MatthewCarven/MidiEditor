@@ -262,15 +262,33 @@ one layer up: **only what you actually changed changes.**
 
 ## Step 4 — GUI editing
 
-- [ ] Mouse model (see PLAN §11) — no tool modes
-- [ ] Note-set selection, Shift+drag marquee, Esc deselects
-- [ ] Undo wired to history
-- [ ] Menu bar + command palette, both generated from the command registry
-      (each command object → one menu item + one key handler + one palette
-      entry, all from the same spec — DPG has no `QAction`, so the registry is
-      the single source instead)
-- [ ] Audition fires into null sink (silent)
-- [ ] **Test:** write a bar by hand, report what fights
+- [x] **Built 2026-10-18.** `ui_gui/editor.py` — the mouse model, selection,
+      undo and audition with no toolkit; `app.py` grew the Edit and Notes
+      menus, the palette, the prompts, New / Save / Save as and the
+      unsaved-changes guard. 43 editor tests, suite at 222.
+- [x] Mouse model (see PLAN §11) — no tool modes. Plus one row the plan didn't
+      have: **drag a note's right edge to resize** (`ResizeNotes` had waited
+      for a gesture since step 1)
+- [x] Note-set selection, Shift+drag marquee (adds to the set), Esc deselects;
+      switching track clears it (ghosts can't be selected)
+- [x] Undo wired to history; an erase sweep is one undo
+- [x] Menu bar + command palette, both generated from the command registry
+      (`editor.menu_sections()` / `edit_menu()` / `palette()`; `PROMPTS` says
+      which commands ask for a value, as data, so one dialog serves them all).
+      `Augment` and `Diminish` became their own registry entries for it.
+- [x] Audition fires into the null sink: click-insert plays the note, a drop
+      plays what landed, delete is silent; A / Edit menu toggles it
+- [x] Keys with a selection: Up/Down transpose, Shift+Up/Down diatonic (C
+      major until a prompt names a key), Left/Right nudge a cell, Q quantise,
+      Del delete, Ctrl+A select all
+- [ ] Open: the velocity lane is still a readout — PLAN §8 says drag a bar.
+      `SetVelocity` is there; the lane needs a hit test and a gesture
+- [ ] Open: closing the window with its X skips the unsaved-changes guard
+      (DearPyGui has no cancellable close); Ctrl+Q and File > Quit don't
+- [ ] Open: no clipboard (copy / paste a selection) — not in the plan, will be
+      missed the first time a bar wants repeating
+- [ ] **Test — for Matthew:** write a bar by hand, save it, open it in FL,
+      and report what fights. `seq gui` with no file starts an empty song.
 
 ## Step 5 — playback
 

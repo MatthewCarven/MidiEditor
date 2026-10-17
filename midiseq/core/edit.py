@@ -365,6 +365,23 @@ class Scale(Command):
         return diffs
 
 
+class Augment(Scale):
+    """``Scale`` by two - its own registry entry so the Notes menu can be
+    generated from the registry with no special cases."""
+
+    label = "Augment x2"
+
+    def __init__(self, nids: Iterable[int]) -> None:
+        super().__init__(nids, 2.0)
+
+
+class Diminish(Scale):
+    label = "Diminish :2"
+
+    def __init__(self, nids: Iterable[int]) -> None:
+        super().__init__(nids, 0.5)
+
+
 # --------------------------------------------------------------------------
 # Moves notes independently
 # --------------------------------------------------------------------------
@@ -454,7 +471,7 @@ for _key, _cls in [
     ("xform.transpose.chromatic", TransposeChromatic),
     ("xform.transpose.diatonic", TransposeDiatonic),
     ("xform.invert", Invert), ("xform.retrograde", Retrograde),
-    ("xform.scale", Scale),
+    ("xform.augment", Augment), ("xform.diminish", Diminish),
     ("xform.quantise", Quantise), ("xform.snap_to_scale", SnapToScale),
 ]:
     register(_key, _cls)
@@ -479,6 +496,7 @@ __all__ = [
     "Command", "Category", "TrackDiff", "CommandSpec", "REGISTRY",
     "AddNote", "DeleteNotes", "MoveNotes", "ResizeNotes", "SetVelocity",
     "TransposeChromatic", "TransposeDiatonic", "Invert", "Retrograde", "Scale",
+    "Augment", "Diminish",
     "Quantise", "SnapToScale", "SCALES", "MAJOR", "NATURAL_MINOR",
     "menu_model", "notes_menu", "register",
 ]

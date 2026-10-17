@@ -55,9 +55,13 @@ class GridWidget:
         self.height = 0
         self.first_cell = 0
         self.top_pitch = 72
+        #: Note ids. The editor mutates this set in place; the matrix marks
+        #: the cells and the plan outlines them.
+        self.selection: set[int] = set()
         self.hover: tuple[int, int] | None = None     # (row, absolute cell)
         self.matrix: Matrix | None = None
         self.plan: PaintPlan | None = None
+        self._col_index: dict[int, int] = {}          # absolute cell -> matrix column
         self.dirty = True
         self.hover_dirty = False
         self.render_ms = 0.0
@@ -84,6 +88,9 @@ class GridWidget:
     def set_track(self, index: int) -> None:
         if 0 <= index < len(self.song.tracks) and index != self.track:
             self.track = index
+            # You can't damage a track you weren't looking at: the other
+            # track's notes are ghosts now, and ghosts can't be selected.
+            self.selection.clear()
             self.fit_pitch_range()
             self.dirty = True
 
@@ -167,8 +174,10 @@ class GridWidget:
             self.song, self.track, zoom=self.zoom,
             first_bar=first_bar, last_bar=last_bar,
             low_pitch=low, high_pitch=high, ghosts=self.ghosts,
+            selection=self.selection,
             middle_c_octave=self.middle_c_octave, index=self.index,
         )
+        self._col_index = {c.cell: i for i, c in enumerate(self.matrix.columns)}
         t1 = time.perf_counter()
         self.plan = plan(self.matrix, self.layout, first_cell=first,
                          width=self.width, height=self.height)
@@ -178,6 +187,34 @@ class GridWidget:
         self.dirty = False
         self.hover_dirty = True
         return self.plan
+
+    # -- lookups for the editor ---------------------------------------------------
+
+    def cell_info(self, row: int, col: int):
+        """``(Row, Cell)`` for a visible square, or None off the matrix."""
+        m = self.matrix
+        if m is None or not 0 <= row < m.height:
+            return None
+        ci = self._col_index.get(col)
+        if ci is None:
+            return None
+        return m.rows[row], m.rows[row].cells[ci]
+
+    def pitch_at_row(self, row: int) -> int | None:
+        m = self.matrix
+        if m is None or not 0 <= row < m.height:
+            return None
+        return m.rows[row].pitch
+
+    def row_of_pitch(self, pitch: int) -> int | None:
+        m = self.matrix
+        if m is None:
+            return None
+        row = self.top_pitch - pitch
+        return row if 0 <= row < m.height else None
+
+    def tick_at_col(self, col: int) -> int:
+        return self.view.cell_to_tick(col)
 
     # -- the mouse --------------------------------------------------------------
 
@@ -210,7 +247,7 @@ class GridWidget:
         row = m.rows[row_i]
         tick = self.view.cell_to_tick(cell)
         parts = [row.label, f"MIDI {row.pitch}", self.view.bars.position(tick)]
-        ci = next((i for i, c in enumerate(m.columns) if c.cell == cell), None)
+        ci = self._col_index.get(cell)
         if ci is not None:
             c = row.cells[ci]
             if c.is_ghost:

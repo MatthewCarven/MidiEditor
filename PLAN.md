@@ -323,6 +323,7 @@ doesn't lose it.
   right      delete            right      —
   right+drag erase sweep       ctrl+drag  ignore snap
   ctrl+drag  ignore snap
+  edge drag  resize            (added when step 4 was built, 2026-10-18)
 ```
 
 - **Esc deselects.** Clicking empty space can't, because it inserts.

@@ -98,6 +98,13 @@ class Layout:
         x, y = self.x_of(cell, first_cell), self.y_of(row)
         return x, y, x + self.cell_w - 1, y + self.row_h - 1
 
+    def raw_cell(self, x: float, y: float, first_cell: int, rows: int) -> tuple[int, int]:
+        """``(row, absolute cell)`` for a point anywhere, clamped to the grid's
+        rows and to cell 0 - for drags that wander off the edge."""
+        row = max(0, min(rows - 1, int((y - self.ruler_h) // self.row_h)))
+        col = max(0, first_cell + int((x - self.gutter_w) // self.cell_w))
+        return row, col
+
     def hit_test(self, x: float, y: float, first_cell: int, rows: int,
                  width: int) -> tuple[int, int] | None:
         """``(row, absolute cell)`` under a point, or None outside the grid."""
@@ -152,7 +159,32 @@ DEFAULT_THEME: dict[str, tuple[int, int, int, int]] = {
     "lane_label": (120, 120, 135, 255),
     "lane_bar": (110, 150, 220, 255),
     "hover": (255, 255, 255, 255),
+    "selected": (255, 250, 170, 255),     # outline round a selected note
+    "preview": (255, 255, 255, 110),      # where a dragged or drawn note will land
+    "marquee": (120, 180, 255, 255),      # the selection rectangle
+    "erase": (255, 90, 90, 255),          # notes a right-drag sweep will delete
 }
+
+
+def span_rect(layout: Layout, first_cell: int, row: int, first_col: int, last_col: int,
+              end_fill: float = 1.0) -> tuple[float, float, float, float]:
+    """The rectangle for a note occupying ``[first_col, last_col]`` on ``row``,
+    stopping ``end_fill`` of the way through its last cell."""
+    x0 = layout.x_of(first_col, first_cell)
+    y = layout.y_of(row)
+    x1 = layout.x_of(last_col, first_cell) + max(1.0, layout.cell_w * end_fill) - 1
+    return x0, y + 1, x1, y + layout.row_h - 1
+
+
+def tick_rect(layout: Layout, first_cell: int, ticks_per_cell: int, row: int,
+              start: int, end: int) -> tuple[float, float, float, float]:
+    """The rectangle for ``[start, end)`` ticks on ``row`` - sub-cell accurate,
+    for previews of unsnapped drags."""
+    tick0 = first_cell * ticks_per_cell
+    x0 = layout.gutter_w + (start - tick0) / ticks_per_cell * layout.cell_w
+    x1 = layout.gutter_w + (end - tick0) / ticks_per_cell * layout.cell_w - 1
+    y = layout.y_of(row)
+    return x0, y + 1, max(x0 + 1, x1), y + layout.row_h - 1
 
 
 # --------------------------------------------------------------------------
@@ -223,15 +255,17 @@ def plan(matrix: Matrix, layout: Layout, *, first_cell: int,
         run_role = "note_medium"
         run_fill = 1.0
         run_has_head = False
+        run_selected = False
 
         def flush() -> None:
             if run_nid is None:
                 return
-            x0 = x_of(run_start)
-            x1 = x_of(run_last) + max(1.0, cw * run_fill) - 1
-            items.append(Rect(x0, y + 1, x1, y + rh - 1, run_role))
+            x0, y0, x1, y1 = span_rect(layout, first_cell, ri, run_start, run_last, run_fill)
+            items.append(Rect(x0, y0, x1, y1, run_role))
             if run_has_head:
-                items.append(Rect(x0, y + 1, x0 + layout.head_w, y + rh - 1, "head"))
+                items.append(Rect(x0, y0, x0 + layout.head_w, y1, "head"))
+            if run_selected:
+                items.append(Rect(x0 - 1, y0 - 1, x1 + 1, y1 + 1, "selected", filled=False))
 
         for ci, c in visible:
             cell = row.cells[ci]
@@ -248,6 +282,7 @@ def plan(matrix: Matrix, layout: Layout, *, first_cell: int,
                 run_ghost = ghost
                 run_role = "ghost" if ghost else f"note_{cell.band}"
                 run_has_head = starts and not ghost
+                run_selected = cell.selected and not ghost
             run_last = c.cell
             run_fill = cell.end_fill
         flush()
@@ -288,5 +323,5 @@ def hover_plan(layout: Layout, first_cell: int, row: int, cell: int) -> list[Pri
     return [Rect(x0, y0, x1, y1, "hover", filled=False)]
 
 
-__all__ = ["Rect", "Line", "Label", "Layout", "PaintPlan", "DEFAULT_THEME",
-           "plan", "hover_plan"]
+__all__ = ["Rect", "Line", "Label", "Layout", "PaintPlan", "DEFAULT_THEME", "LANE_MARKS",
+           "plan", "hover_plan", "span_rect", "tick_rect"]

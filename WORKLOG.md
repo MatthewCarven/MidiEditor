@@ -682,3 +682,70 @@ Ctrl+= / Ctrl+- and the View menu, relabelled "Finer grid / Coarser grid" so
 the two zooms stop sharing a word. One modifier per wheel gesture, never two,
 is now a rule in the app's docstring. The lesson sits next to the zoom one:
 the first thing eyes find is never the thing the tests covered.
+
+## 2026-10-18 — Step 4 built: editing
+
+Matthew: *"It reads right. Start step 4."* Same session. 222 tests pass (43
+new, none opens a window).
+
+### What went in
+
+- **`ui_gui/editor.py`** — the mouse model from PLAN.md §11 as a small
+  gesture state machine (`insert`, `move`, `resize`, `marquee`, `erase`),
+  the selection as the one set the picture also reads, `History` for undo,
+  `Transport` + the null sink for audition, and the registry's two doors:
+  `menu_sections()` for the Notes menu, `edit_menu()`, `palette()`. Pointer
+  events arrive in drawlist pixels; keys arrive as names with modifier
+  flags. No DearPyGui anywhere in it.
+- **`PROMPTS`** — which commands ask for a value and what to ask, as data:
+  `(field, caption, default)` triples per registry key. The window builds
+  one generic dialog from it; the editor parses the strings (`+5`, `A
+  minor`, `G4`, `x0.8`) and turns a bad one into a sentence on the status
+  line rather than a traceback.
+- **`app.py`** — Edit and Notes menus generated from the registry (the
+  Notes menu's two groups are headed by disabled items, so the separator
+  teaches), the Ctrl+P palette (type `inv`, get Invert; Enter runs the first
+  match), prompts, New / Save / Save as through `io_midi.save`, an
+  unsaved-changes guard on New / Open / Quit, the gesture preview on its
+  own draw layer, Undo/Redo labels that name the command.
+- **`core/edit.py`** — `Augment` and `Diminish` as their own classes and
+  registry entries. `Scale` set its label per instance, so the registry's
+  entry for it read "command"; the menu couldn't be generated honestly
+  without the split.
+- **Selection in the picture** — `paint.plan` outlines a selected note's
+  rectangle; `span_rect` and `tick_rect` are now the shared geometry for
+  notes and for previews (sub-cell accurate, so an unsnapped drag shows
+  where it will really land).
+
+### Decisions, each one a line in the plan's table or a line it didn't have
+
+- **Edge drag resizes.** Not in §11's table; added. The grab zone is the
+  last five pixels of a note's rectangle, only when the note is wider than
+  twice that, so a one-cell note still moves.
+- **Inserting doesn't select.** Writing four notes in a row shouldn't leave
+  only the last one selected. FL agrees.
+- **A marquee adds to the set.** It starts with Shift, and Shift means add.
+  Esc first if you wanted to replace.
+- **An erase sweep is one undo**, committed on release; the swept notes are
+  outlined red while the button is down so you can see what you're about to
+  lose.
+- **With a selection the arrows move the notes, not the view** — Up/Down a
+  semitone, Shift+Up/Down a scale degree, Left/Right a cell. Without one
+  they scroll as before. Q quantises the selection to the current grid
+  (the keyboard is the fast path; the menu entry asks for strength).
+- **Diatonic moves need a key**; C major until a prompt names one, and the
+  Snap-to-scale and diatonic prompts both remember what they were told.
+- **Deleting makes no sound**; inserting and dropping do. The audition
+  toggle is `A` and a checkbox in the Edit menu.
+
+### Not done, and said so in the TODO
+
+The velocity lane is still a readout (PLAN §8 wants a drag). The window's X
+button skips the unsaved-changes guard, because DearPyGui's close can't be
+cancelled; Ctrl+Q and File > Quit ask. No clipboard yet.
+
+### Next
+
+Matthew's step-4 test point: write a bar by hand, save it, open it in FL,
+say what fights. Then step 5 — the rtmidi sink, and everything that has
+been auditioning silently starts making noise.

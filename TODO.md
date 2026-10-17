@@ -233,9 +233,11 @@ one layer up: **only what you actually changed changes.**
 - [ ] **For Matthew — eyes, the step-3 test point:** run it and look.
       `seq gui examples/bluesy.mid -t 2 -b 9` (or `python -m midiseq gui …`).
       Wheel = pitches, Shift+wheel = time, Ctrl+wheel = cell width,
-      Ctrl+Shift+wheel = 1/4…1/64, Tab = next track, G = ghosts, F = fit,
-      Home/End, hover names the cell. Then a real file of yours with File >
-      Open. Does it feel right? Is it readable? Say what fights you.
+      `.` / `,` = finer / coarser grid (1/4…1/64), Tab = next track, G =
+      ghosts, F = fit, Home/End, hover names the cell. Then a real file of
+      yours with File > Open. Does it feel right? Is it readable? Say what
+      fights you. *First pass, 2026-10-18:* Ctrl+Shift+wheel and Ctrl+wheel
+      were one gesture on his machine → the grid zoom moved to `.` / `,`.
 - [x] Grid as one drawlist (two layers: grid, hover); scroll offsets and the
       cell pixel size (= zoom) owned by `GridWidget`, never by the global font
       scale (PySynthRack's zoom/size feedback bug is the cautionary tale)

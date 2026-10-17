@@ -666,3 +666,19 @@ No scrollbars (the ruler is the only position cue — an overview strip is
 the better idea), no playhead, no editing, no selection. Step 4 waits on
 Matthew's eyes: `seq gui examples/bluesy.mid -t 2 -b 9`, then a real file of
 his through File > Open.
+
+### Eyes, first pass — the two zooms were one
+
+Matthew, within minutes: *"Ctrl+wheel changes cell width, Ctrl+Shift+wheel
+changes the musical zoom seems to be the same option?"* On his machine the
+Shift wasn't seen alongside the Ctrl, so both gestures fell through to cell
+width. I can't inject modifier-plus-wheel input from here to say whether
+that's DearPyGui's key state during a wheel event or a mouse driver eating
+the combination, and it doesn't matter: a gesture that needs two modifiers
+on the wheel is fragile by construction. Split them. **Ctrl+wheel is cell
+width; the musical zoom is `.` and `,`** — which PLAN.md §6 had assigned to
+it from the start ("pressing `.` zooms finer until it lands true") — plus
+Ctrl+= / Ctrl+- and the View menu, relabelled "Finer grid / Coarser grid" so
+the two zooms stop sharing a word. One modifier per wheel gesture, never two,
+is now a rule in the app's docstring. The lesson sits next to the zoom one:
+the first thing eyes find is never the thing the tests covered.

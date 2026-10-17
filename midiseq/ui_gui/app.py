@@ -10,12 +10,17 @@ That is step 4, and it waits until this picture has been judged readable
     python -m midiseq.ui_gui song.mid
 
 Mouse: wheel scrolls pitches, Shift+wheel scrolls time, Ctrl+wheel changes
-the cell width, Ctrl+Shift+wheel the musical zoom. Hover names the cell.
+the cell width. Hover names the cell. One modifier per gesture, never two:
+the first thing Matthew's eyes found (2026-10-18) was that Ctrl+Shift+wheel
+and Ctrl+wheel did the same thing on his machine, so the musical zoom lives
+on keys instead.
 
-Keys: arrows move a cell or a pitch, Ctrl+Left/Right a bar, PageUp/PageDown
-a screen of pitches, Home/End the first/last bar; Tab and Shift+Tab change
-track; G toggles ghosts; F fits the pitch range; + and - change the cell
-width, Ctrl+= and Ctrl+- the musical zoom; Ctrl+Q quits.
+Keys: ``.`` and ``,`` zoom the grid finer and coarser (1/4 ... 1/64 - the
+zoom PLAN.md §6 means, the one that changes what a cell is), also Ctrl+= and
+Ctrl+-; + and - change the cell width; arrows move a cell or a pitch,
+Ctrl+Left/Right a bar, PageUp/PageDown a screen of pitches, Home/End the
+first/last bar; Tab and Shift+Tab change track; G toggles ghosts; F fits the
+pitch range; Ctrl+Q quits.
 
 Everything DearPyGui-specific is in this file and ``painter.py``. The state
 is ``grid.GridWidget`` and the picture is ``paint.plan``; both run without a
@@ -103,9 +108,11 @@ KEYS = {
     "tab": _key("mvKey_Tab"), "g": _key("mvKey_G"), "f": _key("mvKey_F"), "q": _key("mvKey_Q"),
     "plus": _key("mvKey_Plus", "mvKey_Equal"), "add": _key("mvKey_Add"),
     "minus": _key("mvKey_Minus"), "subtract": _key("mvKey_Subtract"),
+    "period": _key("mvKey_Period"), "comma": _key("mvKey_Comma"),
 }
 #: Keys that act once per press, however long they're held.
-ONE_SHOT = {KEYS[k] for k in ("tab", "g", "f", "q", "plus", "add", "minus", "subtract") if KEYS[k] is not None}
+ONE_SHOT = {KEYS[k] for k in ("tab", "g", "f", "q", "plus", "add", "minus", "subtract",
+                              "period", "comma") if KEYS[k] is not None}
 
 
 # --------------------------------------------------------------------------
@@ -143,11 +150,15 @@ class GridApp:
                     dpg.add_separator()
                     dpg.add_menu_item(label="Quit    Ctrl+Q", callback=lambda: dpg.stop_dearpygui())
                 with dpg.menu(label="View"):
-                    dpg.add_menu_item(label="Zoom finer    Ctrl+=", callback=lambda: self.widget.zoom_finer())
-                    dpg.add_menu_item(label="Zoom coarser    Ctrl+-", callback=lambda: self.widget.zoom_coarser())
+                    dpg.add_menu_item(label="Finer grid (1/4 .. 1/64)    .   Ctrl+=",
+                                      callback=lambda: self.widget.zoom_finer())
+                    dpg.add_menu_item(label="Coarser grid    ,   Ctrl+-",
+                                      callback=lambda: self.widget.zoom_coarser())
                     dpg.add_separator()
-                    dpg.add_menu_item(label="Wider cells    +", callback=lambda: self.widget.zoom_pixels(+1))
-                    dpg.add_menu_item(label="Narrower cells    -", callback=lambda: self.widget.zoom_pixels(-1))
+                    dpg.add_menu_item(label="Wider cells    +   Ctrl+wheel",
+                                      callback=lambda: self.widget.zoom_pixels(+1))
+                    dpg.add_menu_item(label="Narrower cells    -",
+                                      callback=lambda: self.widget.zoom_pixels(-1))
                     dpg.add_separator()
                     dpg.add_menu_item(label="Ghost tracks    G", check=True, tag=GHOSTS_ITEM,
                                       default_value=self.widget.ghosts,
@@ -248,11 +259,11 @@ class GridApp:
         self._sync_track_checks()
 
     def _on_wheel(self, sender, app_data) -> None:
+        # One modifier per gesture. Ctrl wins if both are held, so a driver
+        # that eats Shift+wheel can't turn a zoom into a scroll.
         direction = 1 if app_data > 0 else -1
         w = self.widget
-        if ctrl_down() and shift_down():
-            w.zoom_finer() if direction > 0 else w.zoom_coarser()
-        elif ctrl_down():
+        if ctrl_down():
             w.zoom_pixels(direction)
         elif shift_down():
             w.scroll_cells(-4 * direction)
@@ -291,6 +302,10 @@ class GridApp:
                 dpg.set_value(GHOSTS_ITEM, w.ghosts)
         elif key == k["f"]:
             w.fit_pitch_range()
+        elif key == k["period"]:
+            w.zoom_finer()
+        elif key == k["comma"]:
+            w.zoom_coarser()
         elif key in (k["plus"], k["add"]):
             w.zoom_finer() if ctrl_down() else w.zoom_pixels(+1)
         elif key in (k["minus"], k["subtract"]):

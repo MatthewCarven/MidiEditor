@@ -95,13 +95,20 @@ velocity.
 
 ```
 wheel                 scroll pitches        Shift+wheel        scroll time
-Ctrl+wheel            cell width            Ctrl+Shift+wheel   1/4 … 1/64
+Ctrl+wheel            cell width            . / ,              finer / coarser grid (1/4 … 1/64)
 arrows                a cell / a pitch      Ctrl+Left/Right    a bar
 PageUp/PageDown       a screen of pitches   Home / End         first / last bar
 Tab / Shift+Tab       next / previous track G                  ghosts on/off
 F                     fit the pitch range   + / -              cell width
-Ctrl+= / Ctrl+-       1/4 … 1/64            File > Open        another file
+Ctrl+= / Ctrl+-       finer / coarser grid  File > Open        another file
 ```
+
+Two zooms, deliberately on different hands. **Cell width** (Ctrl+wheel, `+`
+`-`) is pixels: the same grid, bigger or smaller. **The grid** (`.` `,`) is
+musical: what one cell *means*, from a quarter note to a sixty-fourth, which
+is the zoom PLAN.md talks about — zoom finer until an approximate row lands
+true. One modifier per wheel gesture, never two: a mouse driver that eats
+Shift+Ctrl+wheel would otherwise make the two zooms look like one.
 
 Zoom changes the cell width and nothing else — no font rescales, no widget
 moves — and the window's size is taken from the viewport's client area and

@@ -1,0 +1,22 @@
+[project]
+name = "midiseq"
+version = "0.1.0.dev0"
+description = "A MIDI editor with the feel of a step sequencer"
+requires-python = ">=3.10"
+dependencies = ["mido>=1.3"]
+
+[project.optional-dependencies]
+gui = ["dearpygui>=2.0"]
+tui = ["textual>=0.50"]
+audio = ["python-rtmidi>=1.5"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+seq = "midiseq.cli.seq:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

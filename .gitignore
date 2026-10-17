@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Matthew's MIDI library lived here for a compatibility test (1.3 GB); keep it
+# out if it ever comes back.
+midis/
+
+# Scratch output from `seq check ... > log.txt` and the like
+log.txt
+*.log
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

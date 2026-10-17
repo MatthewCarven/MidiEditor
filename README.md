@@ -1,0 +1,218 @@
+# midiseq
+
+A MIDI editor with the feel of a step sequencer. Notes run vertically (chromatic,
+A–G plus sharps and flats), time runs horizontally, and a mark in a square means a
+note starts there.
+
+**Design and reasoning: [PLAN.md](PLAN.md). Progress: [TODO.md](TODO.md).**
+
+Steps 1 and 2 are done: the `core/` skeleton, the `.mid` writer, and text
+editing that round-trips. There is no GUI yet — that's step 3.
+
+## Try it
+
+```
+pip install -e .
+python tools/make_demo.py examples/bluesy.mid
+seq cat examples/bluesy.mid -t 2 -b 9-11 -w 3
+```
+
+If `seq` isn't found after installing — common on Windows, where pip's `Scripts`
+directory often isn't on PATH — `python -m midiseq` is the same program:
+
+```
+python -m midiseq cat examples/bluesy.mid -t 2 -b 9-11 -w 3
+```
+
+```
+    ┌─────────── bar 9 (4/4) ───────────┬───────────── bar 10 ──────────────┬────── bar 11 (3/4) ──────┐
+    ║1 e & a │2 e & a │3 e & a │4 e & a ║1 e & a │2 e & a │3 e & a │4 e & a ║1 e & a │2 e & a │3 e & a ║
+ A4 ║········│········│x──────·│········║········│········│········│········║········│x───────│───────·║
+ G4 ║········│X──────·│········│········║········│····x·x·│········│········║········│········│········║
+ F4~║········│········│········│········║········│········│········│········║x──────·│········│········║
+ E4 ║x──────·│········│········│········║········│········│········│········║········│········│········║
+▒D#4║········│········│········│x──·····║········│········│········│········║········│········│········║
+ C4 ║x──────·│········│········│········║x──────·│········│········│········║········│········│········║
+────╫────────┼────────┼────────┼────────╫────────┼────────┼────────┼────────╫────────┼────────┼────────╢
+ f  ║        │█       │        │        ║        │        │        │        ║        │        │        ║
+ mf ║█       │█       │█       │        ║█       │    █ █ │        │        ║        │        │        ║
+ p  ║█       │█       │█       │█       ║█       │    █ █ │        │        ║█       │█       │        ║
+ pp ║█       │█       │█       │█       ║█       │    █ █ │        │        ║█       │█       │        ║
+────╨────────┴────────┴────────┴────────╨────────┴────────┴────────┴────────╨────────┴────────┴────────╨
+```
+
+Three things worth spotting in that picture:
+
+* **Bar 11 is in 3/4** and is simply shorter. Cell width never changes with meter.
+* **The `~` next to F4** says that row is drawn approximately — that note lands 37
+  ticks late and doesn't sit on any cell boundary. The grid says so rather than
+  quietly quantising it. `-z 1/32` zooms in until it's honest; `Quantise` makes it true.
+* **The `▒` on D#4** marks an accidental row, so the black-key pattern reads at a
+  glance and you never miscount which row is F♯ and which is G.
+
+## The cell grammar
+
+Each square is two characters: **what happens**, and **whether sound carries into
+the next square.**
+
+| char 1 — the event | | char 2 — the tie | |
+|---|---|---|---|
+| `·` | nothing | `·` | released within this cell |
+| `o` | note on, soft | `─` | still sounding as the next cell begins |
+| `x` | note on, medium | | |
+| `X` | note on, loud | | |
+| `─` | note continuing | | |
+| `,` | ghost note (other track, read-only) | | |
+
+```
+x──────·   quarter note, fills the beat
+x──·x──·   two eighths
+x·x·x·x·   four staccato sixteenths
+x───────   a note tying over into the next beat
+```
+
+## Commands
+
+```
+seq cat   FILE [-t TRACK] [-z 1/8] [-b 9-12] [-g] [--full] [--ascii]
+               [--middle-c c3|c4|c5] [--no-lane] [-w BARS_PER_BLOCK]
+seq stat  FILE
+seq check FILE...            does it survive a round trip?
+seq build FILE [-i SOURCE] [-o OUT] [-n]
+```
+
+## Editing in a text editor
+
+```
+seq cat song.mid -t 2 -b 9-11 -w 3 > edit.seq
+vim edit.seq
+seq build edit.seq -i song.mid -o edited.mid
+   edit.seq -> edited.mid: 1 added, 1 removed, 9 untouched
+```
+
+`seq build` **patches** by default. It renders the same picture from the source
+`.mid`, diffs your text against it, and changes only the cells that actually
+differ. Everything you didn't type over is never rewritten — so velocities the
+three bands can't express survive, off-grid notes keep their exact tick, and
+unprinted bars, unprinted tracks and every unmodelled event are left alone.
+
+That's the passthrough rule one storey up: **only what you actually changed
+changes.**
+
+Two consequences worth knowing:
+
+* **To delete a note, blank the cell — don't delete the line.** A row that isn't
+  in the text was never claimed about, and unclaimed is left alone. It has to
+  work that way, or printing a two-bar window and building it back would wipe
+  the rest of the song.
+* **Without `-i` the text is all there is.** `seq build newtune.seq -o new.mid`
+  builds from nothing, so velocities land on the header's band values and notes
+  land on cell boundaries. That's the honest deal for composing from a blank
+  file, and the reason `-i` is the one to reach for otherwise.
+
+## Does your file survive?
+
+```
+seq check .\midi                          a whole folder, walked recursively
+seq check .\midi\*.mid -q                 only the ones with problems
+seq check weird.mid -v                    show me exactly what differed
+seq check .\midi --report r.json -j 4     a whole library, grouped, in parallel
+```
+
+Loads each file, writes it straight back out, and compares what the two *say* —
+notes, controllers, SysEx, tempo, meter, release velocity, metronome click. Not a
+byte comparison: mido re-encodes, and `note_on` with velocity 0 comes back as
+`note_off`. Those aren't changes. Anything `seq check` reports is.
+
+Wildcards are expanded by `seq` itself rather than by the shell, so `*.mid` works
+on Windows too. Folders are walked recursively. One unreadable file is reported
+and the run carries on.
+
+### On a real library
+
+Past 200 files it stops listing files and starts listing **problem kinds**, because
+twenty thousand files hit the same handful of bugs thousands of times and the
+hundredth example teaches nothing:
+
+```
+======================================================
+   19,847 file(s), 41,203,551 notes checked
+======================================================
+    19102  96.2%  ███████████████████████   came back identical
+      488   2.5%  █                         lost or invented something
+      257   1.3%  █                         could not be read
+
+Problems, by kind — this is the bug list:
+      401  sysex lost
+           e.g. .\midioland\SC55-init.mid
+       87  note lost
+           e.g. .\midi\demos\overlap.mid
+
+What's actually in the library:
+  formats      1: 17204, 0: 2643
+  ppq          480: 9120, 192: 4401, 96: 3877, 384: 1902, SMPTE: 90
+  meters       4/4: 18334, 3/4: 1201, 6/8: 588, 12/8: 141, 7/8: 44
+  1,204 file(s) change meter, 6,880 change tempo
+```
+
+`--report r.json` writes all of that as JSON, with up to six example files per
+kind. **That's the file to send someone** — it's a few kilobytes even for twenty
+thousand files, where the console output would be twenty thousand lines.
+
+`-j 4` runs four at a time. Reckon on roughly 20 ms a file serially, so 20,000
+files is about seven minutes, or half that in parallel.
+
+The survey at the bottom is a free by-product and worth having on its own: it says
+what real MIDI in the wild actually looks like, which is what the rest of this
+should be built against rather than guessed at.
+
+## Layout
+
+```
+midiseq/
+  core/          never imports a UI
+    model.py     Song, Track, Note — ticks always, stable note IDs
+    grid.py      model ↔ cells: zoom, snap, bar map, off-grid detection
+    render.py    → cell-state matrix, shared by every UI
+    glyphs.py    cell state → characters, for the TUI and text view only
+    edit.py      command objects — also the function set the menus read
+    history.py   undo/redo
+    io_midi.py   mido in and out, with the passthrough bucket
+    io_seq.py    .seq back in — as a diff against the source, not as the truth
+    io_text.py   the .seq view
+    transport.py audition — a set of notes with relative timing
+  audio/         sink_null now, python-rtmidi at step 5
+  ui_gui/        DearPyGui, step 3
+  ui_tui/        Textual, step 6
+  cli/           seq
+```
+
+## Tests
+
+```
+python -m pytest
+```
+
+A hundred and twenty-seven tests, all on the design invariants rather than the
+plumbing.
+
+Step 1 covers the cell grammar, off-grid honesty, tempo changes costing the grid
+nothing, meter changes narrowing bars but not cells, undo round-trips, chromatic
+vs diatonic transpose being genuinely different operations, structure-preserving
+transforms leaving the glyph shape alone, and auditions keeping relative timing.
+
+Step 2 covers the guarantee — that an unedited file comes back saying the same
+thing — against files built ugly on purpose: format 0 with three channels, pitch
+bend and both flavours of aftertouch, meter changing off the bar line, a 24-PPQ
+file with a pitch overlapping itself, a file with no notes at all, and meta events
+we don't model. Plus the text side: an unedited dump diffing to nothing, blanking
+a cell deleting exactly one note, an untouched off-grid note keeping its 37 ticks,
+velocities the bands can't express surviving a patch, and a row left out of the
+text being left alone.
+
+Ten of them are regressions from an adversarial pass over the finished code — a
+`program_change` for another channel rehoming a whole part, a format 0 split
+dropping controllers on silent channels, drum rows that couldn't be read back
+because the ascii bar separator is `H` and twelve GM names contain one, and a
+four-digit bar number truncating to three and still parsing. Each of those was
+silent. WORKLOG.md has the full list and what each one broke.

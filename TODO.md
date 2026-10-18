@@ -208,8 +208,8 @@ one layer up: **only what you actually changed changes.**
 - [ ] **For Matthew:** move `midis/` out of the project folder (1.3 GB; it was a
       compatibility test), then `git init`. Claude writes the `.gitignore` and
       the first commit after.
-- [ ] `pip install python-rtmidi` on the 3.14 Python (1.5.8 resolves) — needed
-      by step 5.
+- [x] `pip install python-rtmidi` on the 3.14 Python — built from source
+      2026-10-18 (1.5.8; no 3.14 wheel, the build just worked).
 
 ## Step 3 — GUI shell (no editing)
 
@@ -281,21 +281,43 @@ one layer up: **only what you actually changed changes.**
 - [x] Keys with a selection: Up/Down transpose, Shift+Up/Down diatonic (C
       major until a prompt names a key), Left/Right nudge a cell, Q quantise,
       Del delete, Ctrl+A select all
-- [ ] Open: the velocity lane is still a readout — PLAN §8 says drag a bar.
-      `SetVelocity` is there; the lane needs a hit test and a gesture
+- [x] **The velocity lane is editable** (PLAN §8) — built 2026-10-18 by an
+      agent: drag a bar, sweep a ramp (interpolated between mouse events so a
+      fast sweep leaves no holes), Shift+drag a flat line, one undo per sweep
+      (`edit.SetVelocities`); Ctrl+Up/Down nudges a selection by 5, Ctrl+Shift
+      by 1; the status line names the velocity under the mouse
+- [x] **Clipboard** — Cut / Copy / Paste / Duplicate (Ctrl+X/C/V/D), in the
+      Edit menu and the palette; paste lands at the playhead as one undo
+      (`edit.AddNotes`) and selects what it pasted; duplicate lands after the
+      selection's end. The clipboard holds plain tuples, never Note objects.
 - [ ] Open: closing the window with its X skips the unsaved-changes guard
       (DearPyGui has no cancellable close); Ctrl+Q and File > Quit don't
-- [ ] Open: no clipboard (copy / paste a selection) — not in the plan, will be
-      missed the first time a bar wants repeating
 - [ ] **Test — for Matthew:** write a bar by hand, save it, open it in FL,
       and report what fights. `seq gui` with no file starts an empty song.
 
 ## Step 5 — playback
 
-- [ ] `audio/sink_rtmidi.py`, replace null sink
-- [ ] Transport, playhead, audition toggle in transport bar
-- [ ] Don't fire audition while transport is rolling
-- [ ] **Test:** does it sound right, latency OK
+- [x] **Built 2026-10-18**, the same day as 3 and 4, by three agents in
+      parallel worktrees on a contract written first: `core/transport.py`
+      (`schedule()`, `TempoClock`, `Transport.play/stop/position`),
+      `audio/ports.py`. Merged clean; adversarially reviewed after.
+- [x] `audio/sink_rtmidi.py` — one scheduler thread, a heap of absolute due
+      times, an urgent deque for releases, `pump(now)` for tests, winmm
+      `timeBeginPeriod(1)` while the thread lives (Windows otherwise wakes
+      ~13 ms late). Measured through the GS port: note-on 1.4 ms after due.
+- [x] Transport bar (Play/Stop, |<, position, tempo, Audition, output combo),
+      the playhead, click-the-ruler seek, Space / Shift+Space / Home, follow
+      that turns the page; `--midi-out` on `seq gui`; `seq play` headless
+- [x] Don't fire audition while transport is rolling — `Transport.audition`
+      checks `sink.rolling`; deleting makes no sound
+- [ ] Open: the running schedule is not rewritten by edits during playback —
+      stop and play again. A live-updated schedule is a later feature.
+- [ ] Open: Windows ignores `timeBeginPeriod` for a minimised window, so a
+      minimised editor can wake ~15 ms late. Nothing to do in-process.
+- [ ] Open: no loop / cycle range, no metronome, no record from a MIDI input
+- [ ] **Test — for Matthew, ears:** does it sound right, is the latency OK?
+      `seq gui examples/bluesy.mid -t 2 -b 9`, Space. Then `seq play` a file
+      of yours from the console. Then click squares with Audition on.
 
 ## Step 6 — TUI
 

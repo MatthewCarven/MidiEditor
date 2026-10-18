@@ -749,3 +749,76 @@ cancelled; Ctrl+Q and File > Quit ask. No clipboard yet.
 Matthew's step-4 test point: write a bar by hand, save it, open it in FL,
 say what fights. Then step 5 — the rtmidi sink, and everything that has
 been auditioning silently starts making noise.
+
+## 2026-10-18/19 — Step 5 built: sound
+
+Matthew: *"Nothing fights. Start step 5"* — and, a minute later, *"whatever
+else you want to knock through with agents."* So this step was built
+differently: the contract first, by hand, then three agents in parallel
+worktrees, then a review by agents, then two more features by an agent
+while the review ran. The suite went from 222 to 363.
+
+### The contract (by hand, commit 681fe74)
+
+`core/transport.py` grew the rest of the clock. `schedule(song, start_tick)`
+turns a song into raw MIDI bytes with the second each is due, walking the
+tempo map: releases before restrikes on the same tick, set-up messages
+before the notes they are for, a zero-length note's release *after* its own
+attack (the same three rules the writer learned in step 2, now on the wire),
+and when playing from the middle of a song a prelude at second zero carrying
+the last program change, the last value of each controller and the last
+pitch bend per channel, so the right instrument is in force from the first
+note. `TempoClock` is the walk and its inverse; the inverse is what the
+playhead reads. Two bugs found by writing it: `seconds_at` returned zero for
+a file that declares no tempo (the empty-map case the step-2 fix moved out
+of the data and into the lookup, missed here), and the inverse landed a tick
+short when a float fell a billionth under an integer — a hair of slack.
+The `Sink` protocol gained `start / stop / elapsed`; the null sink keeps
+time with an injectable clock; `audio/ports.py` lists outputs and opens one,
+preferring the GS Wavetable, falling back to silence *with a reason*.
+
+python-rtmidi 1.5.8 has no wheel for 3.14 and built from source without a
+word of complaint.
+
+### Three agents, one worktree each, eleven minutes
+
+Each got the contract, a file list that overlapped no one else's, and the
+instruction to commit on its branch and not touch the docs. All three came
+back green and merged without a conflict.
+
+- **The sink** (`audio/sink_rtmidi.py`): one scheduler thread, a heap of
+  absolute due times (no drift), an urgent deque for releases that a halt
+  never clears, `pump(now)` so tests drive it with a fake clock and a fake
+  port, and winmm `timeBeginPeriod(1)` while the thread lives — the agent
+  measured `Condition.wait(3 ms)` waking 13 ms late at Windows' default
+  timer and 0.5 ms with the period raised. Through the real GS port a
+  note-on left 1.4 ms after it was due. Stop releases each sounding note
+  individually (the GS synth honours per-note release envelopes); CC 123 is
+  kept for panic.
+- **The window** (`ui_gui/`): a fixed-size transport bar, the playhead on
+  its own layer, click-the-ruler seek, Space / Shift+Space / Home, a page
+  turn when the playhead passes the right edge, the output combo, the sink
+  opened once and carried across New/Open, closed on quit. All of it in the
+  dpg-free layers first, tested with coordinates and a fake clock.
+- **The console** (`cli/seq.py`): `seq play FILE -b BAR --port --seconds`,
+  and the quadratic diff in `seq check` replaced by a `Counter` multiset
+  diff — 6,000 notes went from 460 ms to 4.5 ms with the same answer. The
+  agent also found that `Transport.stop()` after a schedule had run out
+  reported the *start* tick unless someone had asked for the position in
+  between; fixed in `stop()` with a test.
+
+`seq play examples/bluesy.mid -b 9 --seconds 3` through the GS Wavetable:
+opened, printed `9:1.1  9:2.3  9:4.1`, stopped at `10:1.4`, exit 0. It made
+a sound on Matthew's machine; whether it is the *right* sound is his ears'
+job and the step-5 test point.
+
+### While the review ran: the lane and the clipboard
+
+A fourth agent, in a worktree, took PLAN §8's promise that the lane is
+editable and the clipboard the step-4 notes said would be missed. Drag a bar;
+sweep a ramp (it interpolates between mouse events, because a fast sweep
+with sparse events would leave holes — the agent's call, and right);
+Shift+drag a flat line; one `SetVelocities` per sweep, one undo. Ctrl+Up/Down
+nudges by five. Cut / Copy / Paste / Duplicate, the clipboard as plain
+tuples so note ids never collide, paste at the playhead as one `AddNotes`
+that auditions as a phrase. 55 tests. Merged clean on top of the other three.

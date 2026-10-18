@@ -6,11 +6,12 @@ note starts there.
 
 **Design and reasoning: [PLAN.md](PLAN.md). Progress: [TODO.md](TODO.md).**
 
-Steps 1 to 4 are done: the `core/` skeleton, the `.mid` writer, text editing
-that round-trips, a window that shows the grid, and editing in that window —
-click to write notes, drag to move them, undo, and a Notes menu and a command
-palette generated from the command registry. Sound is step 5; until then every
-edit is auditioned, silently, into a null sink.
+Steps 1 to 5 are done: the `core/` skeleton, the `.mid` writer, text editing
+that round-trips, a window that shows the grid, editing in that window — click
+to write notes, drag to move them, undo, a Notes menu and a command palette
+generated from the command registry — and sound: every edit is auditioned and
+the song plays through a MIDI output (on Windows, the built-in GS Wavetable
+with nothing installed), with a playhead you can click the ruler to move.
 
 ## Try it
 
@@ -84,6 +85,8 @@ seq stat  FILE
 seq check FILE...            does it survive a round trip?
 seq build FILE [-i SOURCE] [-o OUT] [-n]
 seq gui   [FILE] [-t TRACK] [-z 1/16] [-b BAR] [--no-ghosts] [--middle-c c3|c4|c5]
+          [--midi-out NAME]
+seq play  FILE [-b BAR] [--port NAME] [--seconds N]      headless, Ctrl+C stops
 ```
 
 ## The window
@@ -139,6 +142,13 @@ move the notes instead of the view: Up/Down a semitone, Shift+Up/Down a scale
 degree, Left/Right a cell. Q quantises the selection to the grid, Del deletes
 it, Ctrl+A selects the whole track, A toggles audition.
 
+The velocity lane is editable, as PLAN.md always said it should be: drag a
+bar, sweep a ramp across several, Shift+drag a flat line; a sweep is one undo.
+Ctrl+Up/Down nudges a selection's velocity by five, Ctrl+Shift+Up/Down by one.
+Cut, Copy, Paste and Duplicate (Ctrl+X, C, V, D) work on the selection; Paste
+lands at the playhead and selects what it pasted, Duplicate lands right after
+the selection.
+
 The **Edit** and **Notes** menus are generated from the command registry in
 `core/edit.py`, and so is the **command palette** (Ctrl+P: type `inv`, get
 Invert). The Notes menu is laid out in the two groups the registry declares,
@@ -149,6 +159,34 @@ strength; a velocity as `96`, `+10` or `x0.8`.
 
 File > New, Save and Save as write `.mid` through the same writer `seq build`
 uses, so the passthrough rule holds: nothing you didn't touch is rewritten.
+
+### Playback
+
+A transport bar sits between the menu and the grid: **Play / Stop** (Space),
+**|<** rewind, the position as bar:beat.sub, the tempo at the playhead, the
+**Audition** toggle (also A, also in the Edit menu — one flag, three doors),
+and the **MIDI output** to use. Click the ruler to put the playhead there;
+Shift+Space plays from the left edge of the view; Home sends the playhead to
+bar 1. While rolling the playhead is a white line and the view turns the page
+when it passes the right edge.
+
+Sound comes from a MIDI output, not from midiseq. `seq gui --midi-out NAME`
+picks one by substring; with nothing asked for, the Microsoft GS Wavetable is
+used when it exists, else the first port, else the app runs silent and the
+status line says why. The sink is python-rtmidi (`pip install -e ".[audio]"`),
+one scheduler thread with absolute due times; on this machine a note goes out
+about a millisecond and a half after it is due, which the GS synth's own
+latency dwarfs. Playing from the middle of a song sends the last program change
+and controller values first, so the right instruments are in force. Edits
+while playing are fine, but the running schedule is not rewritten by them:
+stop and play again to hear a change.
+
+`seq play song.mid -b 9` does the same from the console, printing the position
+once a second; Ctrl+C releases every sounding note before exiting.
+
+Audition never fires while the transport rolls, and deleting makes no sound —
+both rules live in `core/transport.py`, which is still the only module that
+thinks in seconds.
 
 ## Editing in a text editor
 
@@ -250,8 +288,12 @@ midiseq/
     io_seq.py    .seq back in — as a diff against the source, not as the truth
     io_text.py   the .seq view
     index.py     the notes touching a tick range, without scanning the track
-    transport.py audition — a set of notes with relative timing
-  audio/         sink_null now, python-rtmidi at step 5
+    transport.py audition, the schedule (song → raw MIDI bytes with seconds), the
+                 tempo clock both ways, Transport play/stop/position. Seconds live here only.
+  audio/
+    sink_null.py  swallows everything, keeps a log and a fake-able clock
+    sink_rtmidi.py python-rtmidi: one scheduler thread, absolute due times, per-note release
+    ports.py      which outputs exist; open one, or fall back and say why
   ui_gui/        DearPyGui
     paint.py     cell matrix → rectangles, lines, labels by role. No toolkit.
     painter.py   one primitive, one draw call — takes dpg as an argument

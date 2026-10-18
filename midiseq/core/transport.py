@@ -387,9 +387,10 @@ class Transport:
         return True
 
     def stop(self) -> None:
-        """Stop where we are; the playhead stays there."""
-        if self.rolling:
-            self.playhead = self.position()
+        """Stop where we are; the playhead stays there. A schedule that had
+        already run out leaves the playhead at its end, whether or not anyone
+        asked for the position in between."""
+        self.playhead = self.position()
         self._schedule = None
         self.sink.stop()
 

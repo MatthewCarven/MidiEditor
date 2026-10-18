@@ -16,6 +16,9 @@ midis/
 log.txt
 *.log
 
+# Claude Code's worktrees for parallel agents land under here
+.claude/
+
 # Editors and OS
 .vscode/
 .idea/

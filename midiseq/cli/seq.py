@@ -184,6 +184,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help="don't show other tracks behind this one")
     gui.add_argument("--middle-c", choices=sorted(MIDDLE_C), default="c4",
                      help="octave labelling: c4 scientific (default), c3 Yamaha, c5 FL")
+    gui.add_argument("--midi-out", metavar="NAME", default=None,
+                     help="MIDI output port, matched as a substring (default: the GS "
+                          "Wavetable if present, else the first port)")
 
     play = sub.add_parser(
         "play", help="play the file to a MIDI output",
@@ -227,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return launch(args.file, track=args.track, zoom=args.zoom,
                       middle_c_octave=MIDDLE_C[args.middle_c],
-                      ghosts=not args.no_ghosts, bar=args.bar)
+                      ghosts=not args.no_ghosts, bar=args.bar, midi_out=args.midi_out)
 
     path = Path(args.file)
     if not path.exists():

@@ -58,7 +58,8 @@ def open_sink(name: str | None = None) -> tuple[Sink, str]:
     try:
         from .sink_rtmidi import RtMidiSink
     except ImportError as exc:
-        return NullSink(keep_log=False), f"python-rtmidi not installed ({exc}); silent"
+        return NullSink(keep_log=False), (f"no rtmidi sink ({exc}); silent - "
+                                          f"pip install -e \".[audio]\"")
     try:
         return RtMidiSink(chosen), chosen
     except Exception as exc:  # noqa: BLE001 - the host MIDI stack

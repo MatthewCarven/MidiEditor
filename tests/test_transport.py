@@ -176,6 +176,15 @@ class TestTransportPlayback:
         assert not t.rolling
         assert t.position() == 4 * BEAT                              # the pad's release
 
+    def test_stop_after_running_out_still_lands_at_the_end(self):
+        song = two_track_song()
+        clock = FakeClock()
+        t = Transport(song, NullSink(clock=clock))
+        t.play(0)
+        clock.advance(10.0)                                         # ran out, nobody looked
+        t.stop()
+        assert t.position() == 4 * BEAT
+
     def test_toggle_is_space(self):
         song = two_track_song()
         t = Transport(song, NullSink(clock=FakeClock()))

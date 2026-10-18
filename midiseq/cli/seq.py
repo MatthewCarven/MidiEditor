@@ -8,6 +8,8 @@
     vim edit.seq
     seq build edit.seq -i song.mid -o out.mid    patch: only what you changed
     seq build newtune.seq -o new.mid             no source: build from the text
+
+    seq play song.mid -b 9 --port "GS"           hear it, from bar 9
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ from __future__ import annotations
 import argparse
 import glob as _glob
 import sys
+import time
+from collections import Counter
 from pathlib import Path
 
 #: What counts as a MIDI file when walking a folder.
@@ -60,10 +64,15 @@ def expand(patterns: list[str]) -> list[Path]:
             add(path)
     return out
 
+#: Imported by name so a test can swap the port for a fake without touching
+#: the real MIDI stack.
+from ..audio.ports import open_sink
+from ..audio.sink_null import NullSink
 from ..core import io_midi, io_seq, io_text
 from ..core.history import History
 from ..core.glyphs import ASCII, UNICODE
-from ..core.grid import Zoom
+from ..core.grid import GridView, Zoom
+from ..core.transport import Transport
 from ..core.model import (
     MIDDLE_C_FL,
     MIDDLE_C_SCIENTIFIC,
@@ -176,6 +185,22 @@ def build_parser() -> argparse.ArgumentParser:
     gui.add_argument("--middle-c", choices=sorted(MIDDLE_C), default="c4",
                      help="octave labelling: c4 scientific (default), c3 Yamaha, c5 FL")
 
+    play = sub.add_parser(
+        "play", help="play the file to a MIDI output",
+        description="Rolls from a bar to the end, printing the playhead once a "
+                    "second. Ctrl+C stops it and releases every sounding note. "
+                    "The point is sound, so no usable output port is a failure, "
+                    "not a silent success. Needs python-rtmidi "
+                    "(pip install -e \".[audio]\").")
+    play.add_argument("file")
+    play.add_argument("-b", "--bar", type=int, default=1,
+                      help="start from this bar (default 1)")
+    play.add_argument("--port", metavar="NAME",
+                      help="output port, matched as a case-insensitive substring "
+                           "(default: the GS Wavetable synth, else the first port)")
+    play.add_argument("--seconds", type=float, default=None, metavar="N",
+                      help="stop after N seconds (default: play to the end)")
+
     return p
 
 
@@ -218,6 +243,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "stat":
         print(io_midi.summary(song))
         return 0
+    if args.command == "play":
+        return _play(song, args)
 
     track = args.track if args.track is not None else _default_track(song)
     if not 0 <= track < len(song.tracks):
@@ -234,6 +261,68 @@ def main(argv: list[str] | None = None) -> int:
         bars_per_block=max(1, args.wrap),
     )
     sys.stdout.write(text)
+    return 0
+
+
+#: How often the playhead is printed while rolling, and how often the loop
+#: looks up from its nap to notice the song ended or --seconds ran out.
+REPORT_EVERY = 1.0
+_NAP = 0.05
+
+
+def _play(song, args) -> int:
+    """Roll until the song ends, ``--seconds`` runs out, or Ctrl+C.
+
+    The sink is always stopped on the way out, whatever ended the run: a
+    MIDI note-on with no note-off hangs on the synth until something else
+    silences it, and "the program exited" is not something a synth hears.
+    """
+    try:
+        view = GridView(song)
+    except ValueError as exc:                    # SMPTE: no bars to start from
+        print(f"seq: {exc}", file=sys.stderr)
+        return 1
+    try:
+        start = view.bars.bar(args.bar).start_tick
+    except ValueError as exc:
+        print(f"seq: {exc}", file=sys.stderr)
+        return 2
+
+    sink, description = open_sink(args.port)
+    print(description)
+    if isinstance(sink, NullSink):
+        return 1
+
+    transport = Transport(song, sink)
+    try:
+        if not transport.play(start):
+            print(f"nothing to play from bar {args.bar}")
+            return 0
+        deadline = None if args.seconds is None else time.monotonic() + args.seconds
+        report_at = time.monotonic()
+        while transport.rolling:
+            now = time.monotonic()
+            if deadline is not None and now >= deadline:
+                break
+            if now >= report_at:
+                print(view.bars.position(transport.position()), flush=True)
+                report_at = now + REPORT_EVERY
+            nap = min(_NAP, report_at - now)
+            if deadline is not None:
+                nap = min(nap, deadline - now)
+            time.sleep(max(0.0, nap))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Read the playhead before stopping: stop() forgets the schedule, and
+        # it is the schedule that knows a run that ended by itself ended at
+        # the end rather than where it started.
+        where = transport.position()
+        transport.stop()
+        close = getattr(sink, "close", None)
+        if callable(close):
+            close()
+    print(f"stopped at {view.bars.position(where)}")
     return 0
 
 
@@ -281,10 +370,8 @@ def check_one(name: str) -> dict:
     record["survey"] = _survey(song, before)
 
     for key, noun in _FIELDS:
-        for direction, missing in (("lost", [x for x in before[key]
-                                             if x not in after[key]]),
-                                   ("invented", [x for x in after[key]
-                                                 if x not in before[key]])):
+        lost, invented = multiset_diff(before[key], after[key])
+        for direction, missing in (("lost", lost), ("invented", invented)):
             for item in missing:
                 # Group unmodelled events by message type — "sysex lost" and
                 # "control_change lost" are different bugs wearing one label.
@@ -296,6 +383,30 @@ def check_one(name: str) -> dict:
     if record["problems"]:
         record["status"] = "problems"
     return record
+
+
+def multiset_diff(before: list, after: list) -> tuple[list, list]:
+    """What ``before`` has that ``after`` lacks, and the reverse, counting
+    repeats: a doubled note that comes back single is a lost note, which a
+    set-style ``x not in after`` could never see. Each side keeps its own
+    source order.
+
+    Linear. The ``x not in <list>`` it replaces was quadratic in notes per
+    file - a second for a few thousand, and a library run that was heading
+    for two hours.
+    """
+    return (_in_order(before, Counter(before) - Counter(after)),
+            _in_order(after, Counter(after) - Counter(before)))
+
+
+def _in_order(items: list, counts: Counter) -> list:
+    """``counts`` worth of ``items``, in the order ``items`` has them."""
+    out = []
+    for item in items:
+        if counts[item] > 0:
+            counts[item] -= 1
+            out.append(item)
+    return out
 
 
 def _survey(song, content: dict) -> dict:
@@ -317,7 +428,6 @@ def _survey(song, content: dict) -> dict:
 def _check(args) -> int:
     """The step-2 test point, as a command. Throw a whole library at it."""
     import json
-    from collections import Counter
 
     paths = expand(args.file)
     if not paths:

@@ -315,9 +315,14 @@ one layer up: **only what you actually changed changes.**
 - [ ] Open: Windows ignores `timeBeginPeriod` for a minimised window, so a
       minimised editor can wake ~15 ms late. Nothing to do in-process.
 - [ ] Open: no loop / cycle range, no metronome, no record from a MIDI input
-- [ ] **Test — for Matthew, ears:** does it sound right, is the latency OK?
-      `seq gui examples/bluesy.mid -t 2 -b 9`, Space. Then `seq play` a file
-      of yours from the console. Then click squares with Audition on.
+- [x] **Test — Matthew's ears, 2026-10-19: "working perfectly".** Sound,
+      latency and audition all passed in one go.
+- [ ] **Review, unfinished:** one confirmed finding (the sink keeps sounding
+      notes as a set, so two overlapping notes on one pitch and channel leave
+      the second unreleased by Stop — inaudible on the GS synth; a `Counter`
+      fixes it) and twenty-three findings that never got their verification
+      votes when the usage limit hit (list in the 2026-10-18/19 worklog entry
+      and the workflow output). Triage by hand before step 6.
 
 ## Step 6 — TUI
 

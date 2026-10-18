@@ -822,3 +822,26 @@ Shift+drag a flat line; one `SetVelocities` per sweep, one undo. Ctrl+Up/Down
 nudges by five. Cut / Copy / Paste / Duplicate, the clipboard as plain
 tuples so note ids never collide, paste at the playhead as one `AddNotes`
 that auditions as a phrase. 55 tests. Merged clean on top of the other three.
+
+### The review, cut short
+
+Four reviewer agents with one lens each (threads and stuck notes; the
+arithmetic of time; the window's state; the console and ports) produced 24
+findings. Three skeptics per finding were to vote; the session's usage limit
+hit in the middle and 65 of those votes died, so only one finding has a
+verdict: **the sink keeps sounding notes as a set**, so two overlapping notes
+on one pitch and channel leave the second unreleased by Stop. Reproduced by
+both surviving skeptics; inaudible on the GS Wavetable and FluidSynth, which
+release the key on the first note-off, audible on a synth that counts
+note-ons. A `Counter` per (channel, pitch) is the fix, with one test. The
+other 23 are unvoted, not refuted — among the ones worth a look: the `|<`
+button not bringing the view to bar 1 the way Home does, the output combo
+keeping a port that failed to open, re-selecting the current port silencing
+the app, and `seq check`'s new multiset diff possibly reporting the model's
+own same-tick tempo dedupe as a loss. Matthew asked to stop there; the full
+list is in the workflow's output. Triage by hand next session.
+
+### Ears
+
+2026-10-19, Matthew: *"working perfectly I must say."* Step 5's test point,
+passed.

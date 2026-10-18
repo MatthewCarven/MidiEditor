@@ -38,6 +38,24 @@ The menus and the palette are generated from ``core/edit.py``'s registry:
 ``menu_sections()`` and ``palette()`` are the two front doors, and
 ``PROMPTS`` says which commands need a parameter and what to ask, as data,
 so the window builds one generic dialog for all of them.
+
+The velocity lane is editable, as PLAN.md §8 asks - "an editable one is an
+invitation". A left press in the lane starts a ``velocity`` gesture: every
+column the pointer crosses takes the velocity its y means at that moment,
+so a diagonal sweep draws a ramp, and Shift holds the press's value so a
+sweep draws a flat line. The change lands on release as one
+``SetVelocities``, one undo for the whole sweep; the bars preview it
+meanwhile. Only the current track's notes *starting* in a column are
+touched, and all of them - a chord's notes get one value, because that is
+what the bar stands for. With a selection, Ctrl+Up/Down nudges by 5 and
+Ctrl+Shift+Up/Down by 1.
+
+The clipboard is a tuple of plain ``(pitch, offset, duration, velocity)``
+tuples, offsets from the earliest start - not ``Note`` objects, so a paste
+mints fresh ids and nothing can alias the original. Paste lands at the
+playhead and selects what it added; Duplicate lands right after the
+selection's own end; Cut is Copy then Delete. Each paste is one
+``AddNotes``, one undo, auditioned as the phrase it is.
 """
 
 from __future__ import annotations
@@ -46,25 +64,32 @@ from dataclasses import dataclass, field
 
 from ..audio.sink_null import NullSink
 from ..core import edit
-from ..core.edit import REGISTRY, Category, Command
+from ..core.edit import REGISTRY, Category, Command, NoteSpec
 from ..core.history import History
 from ..core.model import DEFAULT_VELOCITY, Note, parse_pitch
 from ..core.transport import Sink, Transport
 from .grid import GridWidget
-from .paint import Primitive, Rect, tick_rect
+from .paint import Primitive, Rect, lane_bar, tick_rect
 
 LEFT, RIGHT = 0, 1
 EDGE_PX = 5                      # the resize grab zone at a note's right edge
+VELOCITY_STEP = 5                # Ctrl+Up/Down; Ctrl+Shift+Up/Down moves by one
 
-#: Registry entries that only make sense as gestures, never as menu items.
-GESTURE_ONLY = {"note.add", "note.move", "note.resize"}
+#: Registry entries that only make sense as gestures (or as the back half of
+#: an editor action), never as menu items.
+GESTURE_ONLY = {"note.add", "note.add_notes", "note.move", "note.resize", "note.velocities"}
 
 #: Editor-level actions that live beside the registry in the palette and the
-#: Edit menu. They aren't commands (nothing to undo), so they aren't in the
-#: registry; the editor runs them by key like everything else.
+#: Edit menu. They aren't registry commands - some have nothing to undo, the
+#: clipboard ones run one with the editor's own state (the clipboard, the
+#: playhead) filled in - so the editor runs them by key like everything else.
 ACTIONS = [
     ("edit.undo", "Undo", "Ctrl+Z"),
     ("edit.redo", "Redo", "Ctrl+Y"),
+    ("edit.cut", "Cut", "Ctrl+X"),
+    ("edit.copy", "Copy", "Ctrl+C"),
+    ("edit.paste", "Paste", "Ctrl+V"),
+    ("edit.duplicate", "Duplicate", "Ctrl+D"),
     ("edit.select_all", "Select all", "Ctrl+A"),
     ("edit.deselect", "Deselect", "Esc"),
     ("edit.audition", "Audition on edit (toggle)", "A"),
@@ -156,6 +181,10 @@ def bpm_text(bpm: float) -> str:
     return f"{text} bpm"
 
 
+def _count(n: int, word: str = "note") -> str:
+    return f"{n} {word}{'s' if n != 1 else ''}"
+
+
 def _entry(key: str, label: str, shortcut: str | None) -> MenuEntry:
     return MenuEntry(key, label, shortcut, key in PROMPTS)
 
@@ -208,7 +237,7 @@ def palette(query: str) -> list[MenuEntry]:
 
 @dataclass
 class Gesture:
-    kind: str                    # insert | move | resize | marquee | erase
+    kind: str                    # insert | move | resize | marquee | erase | velocity
     button: int
     x0: float
     y0: float
@@ -224,6 +253,11 @@ class Gesture:
     col: int = 0
     swept: set[int] = field(default_factory=set)
     moved: bool = False          # left the press cell at some point
+    # The lane: the velocity at the press, the latest one, and what every
+    # column crossed so far will be set to.
+    vel0: int = 0
+    vel: int = 0
+    values: dict[int, int] = field(default_factory=dict)
 
 
 class Editor:
@@ -234,6 +268,7 @@ class Editor:
         self.sink: Sink = sink or NullSink()
         self.transport = Transport(self.song, self.sink)
         self.selection = widget.selection          # one set, shared with the picture
+        self.clipboard: tuple[NoteSpec, ...] = ()
         self.gesture: Gesture | None = None
         self.key_root, self.key_scale = 0, "major"   # for diatonic moves; C major until told
         self.saved_depth = 0
@@ -282,7 +317,7 @@ class Editor:
         self.history.run(command)
         if audition:
             self.transport.audition(command.auditions())
-        self.message = f"{command.label}: {len(command.touched)} note{'s' if len(command.touched) != 1 else ''}"
+        self.message = f"{command.label}: {_count(len(command.touched))}"
         return command
 
     def undo(self) -> str:
@@ -311,6 +346,12 @@ class Editor:
         w = self.widget
         rows = w.plan.rows if w.plan is not None else 1
         return w.layout.raw_cell(x, y, w.first_cell, rows)
+
+    def _lane_raw(self, x: float, y: float) -> tuple[int, int]:
+        """``(cell, velocity)`` for a lane drag, wherever the pointer is."""
+        w = self.widget
+        rows = w.plan.rows if w.plan is not None else 1
+        return w.layout.lane_raw(x, y, w.first_cell, rows)
 
     def _note_at(self, row: int, col: int) -> Note | None:
         info = self.widget.cell_info(row, col)
@@ -397,6 +438,17 @@ class Editor:
             if tick is not None:
                 self.seek(tick)
                 return
+            lane = self.widget.lane_hit(x, y)
+            if lane is not None:
+                # The lane. Ctrl means nothing here - velocity has no grid
+                # to ignore. Shift holds the press's value: a flat line.
+                col, vel = lane
+                g = Gesture("velocity", button, x, y, 0, col, shift=shift,
+                            x=x, y=y, col=col, vel0=vel, vel=vel)
+                g.values[col] = vel
+                self.gesture = g
+                self.preview_dirty = True
+                return
         hit = self._hit(x, y)
         if hit is None:
             return
@@ -448,6 +500,12 @@ class Editor:
         g = self.gesture
         if g is None:
             return
+        if g.kind == "velocity":
+            col, vel = self._lane_raw(x, y)
+            self._sweep(g, col, vel)
+            g.x, g.y, g.col, g.vel = x, y, col, vel
+            self.preview_dirty = True
+            return
         row, col = self._raw(x, y)
         g.x, g.y, g.row, g.col, g.ctrl = x, y, row, col, ctrl
         if (row, col) != (g.row0, g.col0):
@@ -457,6 +515,25 @@ class Editor:
             if note is not None:
                 g.swept.add(note.nid)
         self.preview_dirty = True
+
+    @staticmethod
+    def _sweep(g: Gesture, col: int, vel: int) -> None:
+        """Give every column between the last point and this one its
+        velocity. Mouse events arrive a few pixels apart, so a quick sweep
+        skips columns; the pointer still passed through them, and a ramp
+        with holes in it is not a ramp, so the skipped ones take the value
+        the straight line between the two points gives them. Shift makes
+        every column the press's value instead."""
+        c0, v0 = g.col, g.vel
+        span = col - c0
+        for c in range(min(c0, col), max(c0, col) + 1):
+            if g.shift:
+                v = g.vel0
+            elif span == 0:
+                v = vel
+            else:
+                v = round(v0 + (vel - v0) * (c - c0) / span)
+            g.values[c] = v
 
     def release(self, x: float, y: float, button: int, *, shift: bool = False,
                 ctrl: bool = False) -> None:
@@ -504,6 +581,22 @@ class Editor:
             if g.swept:
                 self.selection -= g.swept
                 self.run(edit.DeleteNotes(g.swept), audition=False)
+
+        elif g.kind == "velocity":
+            values = self._lane_values(g)
+            if values:
+                self.run(edit.SetVelocities(values))
+
+    def _lane_values(self, g: Gesture) -> dict[int, int]:
+        """The sweep as note ids: every note of the current track starting
+        in a crossed column, a chord's notes alike, leaving out the ones
+        already at that value so a click that changes nothing is no edit."""
+        values: dict[int, int] = {}
+        for col, v in g.values.items():
+            for n in self.widget.notes_starting_in(col):
+                if n.velocity != v:
+                    values[n.nid] = v
+        return values
 
     def cancel(self) -> None:
         self.gesture = None
@@ -556,6 +649,22 @@ class Editor:
             return True
         if ctrl and name == "a":
             self.select_all()
+            return True
+        if ctrl and name == "x":
+            self.cut()
+            return True
+        if ctrl and name == "c":
+            self.copy()
+            return True
+        if ctrl and name == "v":
+            self.paste()
+            return True
+        if ctrl and name == "d":
+            self.duplicate()
+            return True
+        if self.selection and ctrl and name in ("up", "down"):
+            step = 1 if shift else VELOCITY_STEP
+            self.nudge_velocity(step if name == "up" else -step)
             return True
         if name == "a" and not ctrl:
             self.toggle_audition()
@@ -620,6 +729,79 @@ class Editor:
         if self.selection:
             self.run(edit.Quantise(set(self.selection), self._tpc))
 
+    def nudge_velocity(self, delta: int) -> None:
+        if self.selection:
+            self.run(edit.SetVelocity(set(self.selection), delta=delta))
+
+    # -- the clipboard ----------------------------------------------------------
+
+    def _selected_notes(self) -> list[Note]:
+        return sorted((n for t in self.song.tracks for n in t.notes if n.nid in self.selection),
+                      key=lambda n: (n.start, n.pitch))
+
+    @staticmethod
+    def _specs(notes: list[Note]) -> tuple[NoteSpec, ...]:
+        """Notes as clipboard entries: offsets from the earliest start,
+        pitches absolute, no ids."""
+        if not notes:
+            return ()
+        origin = min(n.start for n in notes)
+        return tuple((n.pitch, n.start - origin, n.duration, n.velocity) for n in notes)
+
+    def _place(self, specs: tuple[NoteSpec, ...], at: int) -> Command:
+        """Add ``specs`` to the current track with their origin at ``at``,
+        and make the new notes the selection - so a paste can be nudged,
+        transposed or pasted again straight away."""
+        command = self.run(edit.AddNotes(
+            self.track, [(pitch, at + offset, duration, velocity)
+                         for pitch, offset, duration, velocity in specs]))
+        self.selection.clear()
+        self.selection.update(command.touched)
+        self._changed()
+        return command
+
+    def copy(self) -> str:
+        notes = self._selected_notes()
+        if not notes:
+            self.message = "Copy: nothing selected"
+            return self.message
+        self.clipboard = self._specs(notes)
+        self.message = f"Copied {_count(len(notes))}"
+        return self.message
+
+    def cut(self) -> str:
+        notes = self._selected_notes()
+        if not notes:
+            self.message = "Cut: nothing selected"
+            return self.message
+        self.clipboard = self._specs(notes)
+        self.run(edit.DeleteNotes({n.nid for n in notes}), audition=False)
+        self.message = f"Cut {_count(len(notes))}"
+        return self.message
+
+    def paste(self) -> str:
+        """At the playhead - the one position that is always on screen and
+        always yours to set (a click in the ruler), rolling or not."""
+        if not self.clipboard:
+            self.message = "Paste: clipboard is empty"
+            return self.message
+        at = self.transport.position()
+        self._place(self.clipboard, at)
+        self.message = f"Pasted {_count(len(self.clipboard))} at {self.widget.view.bars.position(at)}"
+        return self.message
+
+    def duplicate(self) -> str:
+        """The selection again, starting where it ends. The clipboard is
+        left alone: duplicating a bar shouldn't lose what you copied."""
+        notes = self._selected_notes()
+        if not notes:
+            self.message = "Duplicate: nothing selected"
+            return self.message
+        at = max(n.end for n in notes)
+        self._place(self._specs(notes), at)
+        self.message = f"Duplicated {_count(len(notes))} at {self.widget.view.bars.position(at)}"
+        return self.message
+
     # -- the registry's door ------------------------------------------------------
 
     def build(self, key: str, raw: dict[str, str] | None = None) -> Command:
@@ -673,6 +855,14 @@ class Editor:
         if key == "edit.audition":
             self.toggle_audition()
             return self.message
+        if key == "edit.cut":
+            return self.cut()
+        if key == "edit.copy":
+            return self.copy()
+        if key == "edit.paste":
+            return self.paste()
+        if key == "edit.duplicate":
+            return self.duplicate()
         if key not in REGISTRY:
             raise KeyError(key)
         if not self.selection:
@@ -742,6 +932,12 @@ class Editor:
                 n = track.note_by_id(nid)
                 if n is not None:
                     note_box(n.pitch, n.start, n.end, "erase", filled=False)
+        elif g.kind == "velocity":
+            # A bar where the sweep will put one; nothing over a column with
+            # no note to set, because nothing will happen there.
+            for col, v in sorted(g.values.items()):
+                if w.notes_starting_in(col):
+                    items.append(lane_bar(w.layout, w.first_cell, w.plan.rows, col, v, "lane_preview"))
         return items
 
     def status_tail(self) -> str:
@@ -770,5 +966,6 @@ class Editor:
 
 
 __all__ = ["Editor", "Gesture", "MenuEntry", "TransportState", "PROMPTS", "ACTIONS",
-           "menu_sections", "edit_menu", "all_entries", "palette", "pitch_class", "parse_key",
-           "velocity_change", "bpm_text", "LEFT", "RIGHT", "EDGE_PX"]
+           "GESTURE_ONLY", "menu_sections", "edit_menu", "all_entries", "palette",
+           "pitch_class", "parse_key", "velocity_change", "bpm_text",
+           "LEFT", "RIGHT", "EDGE_PX", "VELOCITY_STEP"]

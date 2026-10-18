@@ -151,6 +151,29 @@ class AddNote(Command):
         return [TrackDiff(self.track, added=(note,))]
 
 
+#: What the clipboard holds: ``(pitch, start, duration, velocity)``. Plain
+#: tuples rather than ``Note`` objects, so a paste mints fresh ids and the
+#: copy can never collide with - or alias - the note it came from.
+NoteSpec = tuple[int, int, int, int]
+
+
+class AddNotes(Command):
+    """Several notes in one diff: a paste or a duplicate is one undo, and
+    auditions as the chord or phrase it is rather than note by note."""
+
+    label = "Add notes"
+
+    def __init__(self, track: int, specs: Iterable[NoteSpec]) -> None:
+        super().__init__()
+        self.track = track
+        self.specs = tuple(specs)
+
+    def plan(self, song: Song) -> list[TrackDiff]:
+        added = tuple(song.make_note(pitch, start, duration, velocity)
+                      for pitch, start, duration, velocity in self.specs)
+        return [TrackDiff(self.track, added=added)]
+
+
 class DeleteNotes(Command):
     label = "Delete"
     shortcut = "Del"
@@ -232,6 +255,27 @@ class SetVelocity(Command):
                     v = n.velocity + self.delta
                 out.append(n.with_velocity(v))
             diffs.append(TrackDiff(ti, removed=tuple(notes), added=tuple(out)))
+        return diffs
+
+
+class SetVelocities(Command):
+    """A different value per note, in one command: what a drag across the
+    lane fires on release. A sweep that draws a ramp over twenty columns
+    is one gesture, so it is one undo; ``SetVelocity`` gives every note the
+    same treatment and would need twenty of them."""
+
+    label = "Set velocities"
+    category = Category.INDEPENDENT
+
+    def __init__(self, values: dict[int, int]) -> None:
+        super().__init__()
+        self.values = dict(values)
+
+    def plan(self, song: Song) -> list[TrackDiff]:
+        diffs = []
+        for ti, notes in _resolve(song, self.values).items():
+            out = tuple(n.with_velocity(self.values[n.nid]) for n in notes)
+            diffs.append(TrackDiff(ti, removed=tuple(notes), added=out))
         return diffs
 
 
@@ -466,8 +510,9 @@ def register(key: str, cls: type) -> None:
 
 
 for _key, _cls in [
-    ("note.add", AddNote), ("note.delete", DeleteNotes), ("note.move", MoveNotes),
-    ("note.resize", ResizeNotes), ("note.velocity", SetVelocity),
+    ("note.add", AddNote), ("note.add_notes", AddNotes), ("note.delete", DeleteNotes),
+    ("note.move", MoveNotes), ("note.resize", ResizeNotes),
+    ("note.velocity", SetVelocity), ("note.velocities", SetVelocities),
     ("xform.transpose.chromatic", TransposeChromatic),
     ("xform.transpose.diatonic", TransposeDiatonic),
     ("xform.invert", Invert), ("xform.retrograde", Retrograde),
@@ -493,8 +538,9 @@ def notes_menu() -> list[tuple[str, list[CommandSpec]]]:
 
 
 __all__ = [
-    "Command", "Category", "TrackDiff", "CommandSpec", "REGISTRY",
-    "AddNote", "DeleteNotes", "MoveNotes", "ResizeNotes", "SetVelocity",
+    "Command", "Category", "TrackDiff", "CommandSpec", "REGISTRY", "NoteSpec",
+    "AddNote", "AddNotes", "DeleteNotes", "MoveNotes", "ResizeNotes",
+    "SetVelocity", "SetVelocities",
     "TransposeChromatic", "TransposeDiatonic", "Invert", "Retrograde", "Scale",
     "Augment", "Diminish",
     "Quantise", "SnapToScale", "SCALES", "MAJOR", "NATURAL_MINOR",

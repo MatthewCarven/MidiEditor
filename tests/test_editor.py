@@ -326,6 +326,7 @@ class TestRegistryDoors:
     def test_gestures_are_not_menu_items(self):
         keys = {e.key for e in all_entries()}
         assert "note.add" not in keys and "note.move" not in keys and "note.resize" not in keys
+        assert "note.add_notes" not in keys and "note.velocities" not in keys
         assert "note.delete" in keys
 
     def test_the_edit_menu(self):

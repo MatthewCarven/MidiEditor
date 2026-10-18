@@ -122,13 +122,51 @@ class Layout:
 
     def hit_test(self, x: float, y: float, first_cell: int, rows: int,
                  width: int) -> tuple[int, int] | None:
-        """``(row, absolute cell)`` under a point, or None outside the grid."""
+        """``(row, absolute cell)`` under a point, or None outside the grid.
+        The lane is outside: a press there is a velocity gesture, never a
+        note gesture, so it must not read as a cell."""
         if x < self.gutter_w or x >= self.gutter_w + self.visible_cols(width) * self.cell_w:
             return None
         if y < self.ruler_h or y >= self.ruler_h + rows * self.row_h:
             return None
         return (int((y - self.ruler_h) // self.row_h),
                 first_cell + int((x - self.gutter_w) // self.cell_w))
+
+    # -- the velocity lane --------------------------------------------------
+
+    def lane_rect(self, rows: int, width: int) -> tuple[int, int, int, int]:
+        """The lane's rectangle under ``rows`` grid rows: gutter to the last
+        visible column, ``lane_h`` tall. Half-open on the right and bottom,
+        like the grid."""
+        top = self.ruler_h + rows * self.row_h
+        return (self.gutter_w, top,
+                self.gutter_w + self.visible_cols(width) * self.cell_w, top + self.lane_h)
+
+    def lane_velocity(self, y: float, rows: int) -> int:
+        """The velocity a y in the lane means: the top is 127, the bottom
+        edge 1 - the inverse of the bar height the plan draws, so a press on
+        a bar's top edge reads back the bar's own value. Clamped, because a
+        drag that leaves the lane should pin at the extremes, not vanish."""
+        bottom = self.ruler_h + rows * self.row_h + self.lane_h
+        v = round((bottom - y) * 127 / self.lane_h)
+        return max(1, min(127, v))
+
+    def lane_hit(self, x: float, y: float, first_cell: int, rows: int,
+                 width: int) -> tuple[int, int] | None:
+        """``(absolute cell, velocity)`` under a point in the lane, or None
+        when the point is in the gutter, past the last column, or not in
+        the lane at all."""
+        x0, y0, x1, y1 = self.lane_rect(rows, width)
+        if not (x0 <= x < x1 and y0 <= y < y1):
+            return None
+        return first_cell + int((x - self.gutter_w) // self.cell_w), self.lane_velocity(y, rows)
+
+    def lane_raw(self, x: float, y: float, first_cell: int, rows: int) -> tuple[int, int]:
+        """``(absolute cell, velocity)`` for a point anywhere, clamped to
+        cell 0 and to 1..127 - for a lane drag that wanders off the lane,
+        the counterpart of ``raw_cell``."""
+        col = max(0, first_cell + int((x - self.gutter_w) // self.cell_w))
+        return col, self.lane_velocity(y, rows)
 
 
 @dataclass
@@ -173,6 +211,7 @@ DEFAULT_THEME: dict[str, tuple[int, int, int, int]] = {
     "lane_axis": (60, 60, 72, 255),
     "lane_label": (120, 120, 135, 255),
     "lane_bar": (110, 150, 220, 255),
+    "lane_preview": (255, 255, 255, 150),  # where a lane drag will put the bars
     "hover": (255, 255, 255, 255),
     "selected": (255, 250, 170, 255),     # outline round a selected note
     "preview": (255, 255, 255, 110),      # where a dragged or drawn note will land
@@ -200,6 +239,18 @@ def tick_rect(layout: Layout, first_cell: int, ticks_per_cell: int, row: int,
     x1 = layout.x_of_tick(end, first_cell, ticks_per_cell) - 1
     y = layout.y_of(row)
     return x0, y + 1, max(x0 + 1, x1), y + layout.row_h - 1
+
+
+def lane_bar(layout: Layout, first_cell: int, rows: int, cell: int, velocity: int,
+             role: str = "lane_bar") -> Rect:
+    """One bar in the velocity lane: ``velocity`` of the lane's height,
+    standing on the lane's floor, a pixel in from the column's edges. The
+    plan and the gesture preview both draw bars through this, so a preview
+    at the bar's current value sits exactly on top of it."""
+    x = layout.x_of(cell, first_cell)
+    bottom = layout.ruler_h + rows * layout.row_h + layout.lane_h
+    h = int(layout.lane_h * velocity / 127)
+    return Rect(x + 1, bottom - h, x + max(2, layout.cell_w - 2), bottom, role)
 
 
 def playhead_plan(layout: Layout, first_cell: int, ticks_per_cell: int, tick: int,
@@ -337,9 +388,7 @@ def plan(matrix: Matrix, layout: Layout, *, first_cell: int,
     for ci, c in visible:
         v = matrix.velocity_lane[ci]
         if v:
-            x = x_of(c.cell)
-            h = int(layout.lane_h * v / 127)
-            items.append(Rect(x + 1, lane_bottom - h, x + max(2, cw - 2), lane_bottom, "lane_bar"))
+            items.append(lane_bar(layout, first_cell, rows, c.cell, v))
 
     return out
 
@@ -352,4 +401,4 @@ def hover_plan(layout: Layout, first_cell: int, row: int, cell: int) -> list[Pri
 
 
 __all__ = ["Rect", "Line", "Label", "Layout", "PaintPlan", "DEFAULT_THEME", "LANE_MARKS",
-           "plan", "hover_plan", "playhead_plan", "span_rect", "tick_rect"]
+           "plan", "hover_plan", "playhead_plan", "lane_bar", "span_rect", "tick_rect"]

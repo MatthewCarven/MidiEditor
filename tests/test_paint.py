@@ -15,7 +15,7 @@ from midiseq.core import io_midi
 from midiseq.core.grid import GridView, Zoom
 from midiseq.core.render import render
 from midiseq.ui_gui import paint
-from midiseq.ui_gui.paint import Label, Layout, Rect, hover_plan, plan
+from midiseq.ui_gui.paint import Label, Layout, Line, Rect, hover_plan, plan, playhead_plan, tick_rect
 
 BLUESY = Path(__file__).resolve().parent.parent / "examples" / "bluesy.mid"
 WIDTH, HEIGHT = 1280, 760
@@ -160,6 +160,46 @@ class TestHitTesting:
         assert len(items) == 1 and isinstance(items[0], Rect)
         assert items[0].role == "hover" and not items[0].filled
         assert (items[0].x0, items[0].y0, items[0].x1, items[0].y1) == layout.cell_rect(3, 14, 10)
+
+    def test_the_ruler_is_hit_tested_by_column_only(self):
+        layout = Layout(cell_w=14)
+        first_cell = 128
+        x0 = layout.x_of(first_cell + 5, first_cell)
+        assert layout.ruler_cell(x0, 0, first_cell, WIDTH) == first_cell + 5
+        assert layout.ruler_cell(x0 + 13, layout.ruler_h - 1, first_cell, WIDTH) == first_cell + 5
+        assert layout.ruler_cell(x0, layout.ruler_h, first_cell, WIDTH) is None     # the grid
+        assert layout.ruler_cell(3, 5, first_cell, WIDTH) is None                   # the gutter
+        last = first_cell + layout.visible_cols(WIDTH)
+        assert layout.ruler_cell(layout.x_of(last, first_cell), 5, first_cell, WIDTH) is None
+
+
+class TestPlayhead:
+    def test_x_of_tick_is_sub_cell(self):
+        layout = Layout(cell_w=14)
+        first_cell, tpc = 128, 120
+        left = first_cell * tpc
+        assert layout.x_of_tick(left, first_cell, tpc) == layout.gutter_w
+        assert layout.x_of_tick(left + tpc, first_cell, tpc) == layout.x_of(first_cell + 1, first_cell)
+        assert layout.x_of_tick(left + tpc // 2, first_cell, tpc) == layout.gutter_w + 7
+        assert layout.x_of_tick(left - tpc, first_cell, tpc) == layout.gutter_w - 14   # off to the left
+
+    def test_tick_rect_agrees_with_x_of_tick(self):
+        layout = Layout(cell_w=14)
+        x0, _, x1, _ = tick_rect(layout, 128, 120, 0, 128 * 120 + 60, 128 * 120 + 300)
+        assert x0 == layout.x_of_tick(128 * 120 + 60, 128, 120)
+        assert x1 == layout.x_of_tick(128 * 120 + 300, 128, 120) - 1
+
+    def test_the_line_spans_ruler_to_lane_and_is_absent_off_screen(self):
+        layout = Layout(cell_w=14)
+        cols, rows, first_cell, tpc = 87, 48, 128, 120
+        [line] = playhead_plan(layout, first_cell, tpc, 128 * 120 + 60, cols, rows)
+        assert isinstance(line, Line) and line.role == "playhead"
+        assert line.x0 == line.x1 == layout.gutter_w + 7
+        assert line.y0 == 0 and line.y1 == layout.ruler_h + rows * layout.row_h + layout.lane_h
+        assert playhead_plan(layout, first_cell, tpc, 128 * 120 - 1, cols, rows) == []
+        assert playhead_plan(layout, first_cell, tpc, (128 + cols) * 120, cols, rows) == []
+        [edge] = playhead_plan(layout, first_cell, tpc, (128 + cols) * 120 - 1, cols, rows)
+        assert edge.x0 < layout.gutter_w + cols * layout.cell_w
 
 
 class TestLayout:

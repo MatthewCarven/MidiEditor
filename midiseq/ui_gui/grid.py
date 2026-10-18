@@ -19,7 +19,7 @@ from ..core.grid import GridView, Zoom
 from ..core.index import SongIndex
 from ..core.model import DEFAULT_MIDDLE_C_OCTAVE, Song
 from ..core.render import Matrix
-from .paint import Layout, PaintPlan, Primitive, hover_plan, plan
+from .paint import Layout, PaintPlan, Primitive, hover_plan, plan, playhead_plan
 
 
 def default_track(song: Song) -> int:
@@ -130,6 +130,23 @@ class GridWidget:
         self.top_pitch = max(self.visible_rows - 1, min(127, self.top_pitch + n))
         self.dirty = True
 
+    def tick_visible(self, tick: int) -> bool:
+        return self.first_cell <= self.view.tick_to_cell(tick) < self.first_cell + self.visible_cols
+
+    def follow(self, tick: int) -> bool:
+        """Keep a rolling playhead on screen: once it passes the right edge,
+        turn the page so its bar starts at the left. Page-wise rather than
+        continuous, so the notes you are editing hold still until they must
+        move. A playhead off to the *left* is left alone - you scrolled
+        ahead on purpose. Returns whether the view moved."""
+        cell = self.view.tick_to_cell(tick)
+        if cell < self.first_cell + self.visible_cols:
+            return False
+        self.go_to_bar(self.view.bars.bar_containing(tick).number)
+        if cell >= self.first_cell + self.visible_cols:    # a bar wider than the window
+            self.first_cell = cell
+        return True
+
     def set_cell_w(self, cell_w: int) -> None:
         new = self.layout.with_cell_w(cell_w)
         if new != self.layout:
@@ -237,6 +254,13 @@ class GridWidget:
             return []
         row, cell = self.hover
         return hover_plan(self.layout, self.first_cell, row, cell)
+
+    def playhead_items(self, tick: int) -> list[Primitive]:
+        """The playhead line at ``tick``, in this view; nothing off screen."""
+        if self.plan is None:
+            return []
+        return playhead_plan(self.layout, self.first_cell, self.view.ticks_per_cell, tick,
+                             self.plan.cols, self.plan.rows)
 
     def status(self) -> str:
         """The status line: where the mouse is, and what's under it."""

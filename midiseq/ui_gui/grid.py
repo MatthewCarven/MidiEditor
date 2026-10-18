@@ -59,6 +59,9 @@ class GridWidget:
         #: the cells and the plan outlines them.
         self.selection: set[int] = set()
         self.hover: tuple[int, int] | None = None     # (row, absolute cell)
+        #: The lane column under the mouse, for the status line. Separate
+        #: from ``hover`` because the lane has no cell to outline.
+        self.lane_hover: int | None = None
         self.matrix: Matrix | None = None
         self.plan: PaintPlan | None = None
         self._col_index: dict[int, int] = {}          # absolute cell -> matrix column
@@ -233,15 +236,37 @@ class GridWidget:
     def tick_at_col(self, col: int) -> int:
         return self.view.cell_to_tick(col)
 
+    def notes_starting_in(self, col: int) -> list:
+        """The current track's notes that *start* in column ``col`` - the
+        notes the lane's bar for that column stands for. A note sustaining
+        through the column from earlier belongs to the column it began in."""
+        track = self.song.tracks[self.track]
+        return [n for n in self.view.notes_in_cell_range(track, col, col)
+                if self.view.tick_to_cell(n.start) == col]
+
+    def lane_velocity_at(self, col: int) -> int:
+        """What the lane shows for a column: the peak velocity of the notes
+        starting there, or 0 when none does."""
+        return max((n.velocity for n in self.notes_starting_in(col)), default=0)
+
     # -- the mouse --------------------------------------------------------------
+
+    def lane_hit(self, x: float, y: float) -> tuple[int, int] | None:
+        """``(absolute cell, velocity)`` under a point in the lane, or None."""
+        if self.plan is None:
+            return None
+        return self.layout.lane_hit(x, y, self.first_cell, self.plan.rows, self.width)
 
     def set_hover(self, x: float | None, y: float | None) -> bool:
         """Point the mouse at a pixel (or None for "not over the grid").
         Returns whether the hovered cell changed."""
         if x is None or y is None or self.plan is None:
-            new = None
+            new, lane = None, None
         else:
             new = self.layout.hit_test(x, y, self.first_cell, self.plan.rows, self.width)
+            hit = self.lane_hit(x, y)
+            lane = None if hit is None else hit[0]
+        self.lane_hover = lane
         if new != self.hover:
             self.hover = new
             self.hover_dirty = True
@@ -263,8 +288,15 @@ class GridWidget:
                              self.plan.cols, self.plan.rows)
 
     def status(self) -> str:
-        """The status line: where the mouse is, and what's under it."""
+        """The status line: where the mouse is, and what's under it. In the
+        lane that is the column's bar - its value and where it is - so the
+        number the bar stands for is one hover away."""
         m = self.matrix
+        if m is not None and self.lane_hover is not None:
+            col = self.lane_hover
+            v = self.lane_velocity_at(col)
+            where = self.view.bars.position(self.view.cell_to_tick(col))
+            return f"vel {v if v else '-'} at {where}  |  " + self._status_tail()
         if m is None or self.hover is None or self.hover[0] >= m.height:
             return self._status_tail()
         row_i, cell = self.hover

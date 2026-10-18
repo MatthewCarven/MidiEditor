@@ -23,7 +23,7 @@ from midiseq.core.model import (
     pitch_name,
 )
 from midiseq.core.render import render
-from midiseq.core.transport import Transport
+from midiseq.core.transport import Audition, Transport
 
 PPQ = 480
 BEAT = PPQ
@@ -312,6 +312,48 @@ class TestCommands:
         b = edit.REGISTRY["xform.transpose.diatonic"].label
         assert a != b
         assert "semitone" in a.lower() and "degree" in b.lower()
+
+    def test_add_notes_is_one_diff_with_fresh_ids_and_undoes_cleanly(self):
+        """A paste is one command: one undo, one audition, ids that can't
+        collide with what was copied."""
+        song = song_with([(60, 0, BEAT)])
+        before = list(song.tracks[0].notes)
+        h = History(song)
+        c = h.run(edit.AddNotes(0, [(64, BEAT, BEAT, 90), (67, BEAT, BEAT // 2, 70)]))
+        assert len(c._diffs) == 1 and len(song.tracks[0].notes) == 3
+        added = [n for n in song.tracks[0].notes if n.nid in c.touched]
+        assert [(n.pitch, n.start, n.duration, n.velocity) for n in added] == [
+            (64, BEAT, BEAT, 90), (67, BEAT, BEAT // 2, 70)]
+        assert len({n.nid for n in song.tracks[0].notes}) == 3
+        assert {n.offset for n in Audition.of(song, c.auditions()).notes} == {0}   # heard as one chord
+        h.undo()
+        assert song.tracks[0].notes == before
+        h.redo()
+        assert {n.nid for n in song.tracks[0].notes if n.nid in c.touched} == c.touched
+
+    def test_set_velocities_takes_a_value_per_note_and_undoes_cleanly(self):
+        """A lane sweep is one command however many columns it crossed."""
+        song = song_with([(60, 0, BEAT, 80), (64, BEAT, BEAT, 80), (67, 2 * BEAT, BEAT, 80)])
+        a, b, c = [n.nid for n in song.tracks[0].sorted_notes()]
+        h = History(song)
+        cmd = h.run(edit.SetVelocities({a: 20, b: 200, c: 0}))
+        by_nid = {n.nid: n.velocity for n in song.tracks[0].notes}
+        assert by_nid == {a: 20, b: 127, c: 1}                       # clamped, like every edit
+        assert cmd.touched == {a, b, c} and h.depth == 1
+        h.undo()
+        assert {n.nid: n.velocity for n in song.tracks[0].notes} == {a: 80, b: 80, c: 80}
+        assert {n.nid for n in song.tracks[0].notes} == {a, b, c}    # ids survive
+
+    def test_set_velocities_ignores_ids_it_cannot_find(self):
+        song = song_with([(60, 0, BEAT, 80)])
+        [n] = song.tracks[0].notes
+        History(song).run(edit.SetVelocities({n.nid: 50, 999: 50}))
+        assert song.tracks[0].notes[0].velocity == 50
+
+    def test_the_gesture_commands_are_registered_in_their_categories(self):
+        assert edit.REGISTRY["note.add_notes"].category is edit.Category.EDIT
+        assert edit.REGISTRY["note.velocities"].category is edit.Category.INDEPENDENT
+        assert edit.REGISTRY["note.velocities"].label == "Set velocities"
 
 
 def _shape(song):

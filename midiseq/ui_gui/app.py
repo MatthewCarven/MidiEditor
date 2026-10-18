@@ -17,20 +17,23 @@ seek.
 
 Mouse: wheel scrolls pitches, Shift+wheel scrolls time, Ctrl+wheel changes
 the cell width. Hover names the cell. A left click in the ruler moves the
-playhead there (and restarts playback from there if rolling). One modifier
-per gesture, never two.
+playhead there (and restarts playback from there if rolling). A left drag
+in the velocity lane sets the bars it crosses (Shift+drag to one level);
+hovering the lane names the bar. One modifier per gesture, never two.
 
 Keys: Space plays and stops; Shift+Space plays from the left edge of the
 view; ``.`` and ``,`` zoom the grid finer and coarser (1/4 ... 1/64), also
 Ctrl+= and Ctrl+-; + and - change the cell width; arrows move a cell or a
 pitch, or - with a selection - move the notes (Up/Down transposes,
-Shift+Up/Down by scale degree); Ctrl+Left/Right a bar, PageUp/PageDown a
-screen of pitches, Home the first bar (playhead too), End the last; Tab and
+Shift+Up/Down by scale degree, Ctrl+Up/Down changes velocity by 5 and
+Ctrl+Shift+Up/Down by 1); Ctrl+Left/Right a bar, PageUp/PageDown a screen
+of pitches, Home the first bar (playhead too), End the last; Tab and
 Shift+Tab change track; G toggles ghosts; F fits the pitch range; A toggles
 audition; Q quantises the selection to the grid; Del deletes it; Esc stops,
 cancels, deselects; Ctrl+Z / Ctrl+Y undo and redo; Ctrl+A selects all;
-Ctrl+P the palette; Ctrl+N / O / S / Shift+S new, open, save, save as;
-Ctrl+Q quits.
+Ctrl+X / C / V cut, copy and paste (at the playhead), Ctrl+D duplicates
+the selection after itself; Ctrl+P the palette; Ctrl+N / O / S / Shift+S
+new, open, save, save as; Ctrl+Q quits.
 
 Editing while playing is allowed and never crashes, but the schedule the
 sink is playing is the song as it was when Play was pressed: a note moved
@@ -156,8 +159,9 @@ _KEY_SPECS = {
     "plus": ("mvKey_Plus", "mvKey_Equal"), "add": ("mvKey_Add",),
     "minus": ("mvKey_Minus",), "subtract": ("mvKey_Subtract",),
     "period": ("mvKey_Period",), "comma": ("mvKey_Comma",),
-    "a": ("mvKey_A",), "f": ("mvKey_F",), "g": ("mvKey_G",), "n": ("mvKey_N",), "o": ("mvKey_O",),
-    "p": ("mvKey_P",), "q": ("mvKey_Q",), "s": ("mvKey_S",), "y": ("mvKey_Y",), "z": ("mvKey_Z",),
+    "a": ("mvKey_A",), "c": ("mvKey_C",), "d": ("mvKey_D",), "f": ("mvKey_F",), "g": ("mvKey_G",),
+    "n": ("mvKey_N",), "o": ("mvKey_O",), "p": ("mvKey_P",), "q": ("mvKey_Q",), "s": ("mvKey_S",),
+    "v": ("mvKey_V",), "x": ("mvKey_X",), "y": ("mvKey_Y",), "z": ("mvKey_Z",),
 }
 KEY_NAMES: dict[int, str] = {}
 for _name, _attrs in _KEY_SPECS.items():
@@ -166,8 +170,9 @@ for _name, _attrs in _KEY_SPECS.items():
         KEY_NAMES.setdefault(_code, _name)
 
 #: Keys that act once per press, however long they're held. Arrows repeat.
-ONE_SHOT = {"tab", "f", "g", "q", "a", "n", "o", "p", "s", "y", "z", "plus", "add", "minus",
-            "subtract", "period", "comma", "escape", "delete", "backspace", "enter", "space"}
+ONE_SHOT = {"tab", "f", "g", "q", "a", "c", "d", "n", "o", "p", "s", "v", "x", "y", "z",
+            "plus", "add", "minus", "subtract", "period", "comma", "escape", "delete",
+            "backspace", "enter", "space"}
 
 
 # --------------------------------------------------------------------------
@@ -232,8 +237,8 @@ class GridApp:
                             continue
                         dpg.add_menu_item(label=self._menu_label(e), user_data=e.key,
                                           tag=f"midiseq_menu_{e.key}", callback=self._on_entry)
-                        if e.key == "edit.redo":
-                            dpg.add_separator()
+                        if e.key in ("edit.redo", "edit.duplicate"):
+                            dpg.add_separator()     # undo | clipboard | selection
                     dpg.add_separator()
                     dpg.add_menu_item(label="Command palette...    Ctrl+P",
                                       callback=lambda: self.open_palette())

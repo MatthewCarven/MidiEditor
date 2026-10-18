@@ -23,7 +23,16 @@ poking it with coordinates.
 
 Audition goes through ``Transport.audition``, so its guards apply - the
 toggle, and never while the transport rolls - and dropping a chord sounds
-like a chord. Sound itself is step 5; until then the null sink keeps a log.
+like a chord.
+
+Step 5 gave the editor the transport proper: ``seek`` (a click in the
+ruler), Space, Shift+Space and Home as keys, and ``frame()``, which the
+window calls once a frame to learn where the playhead is and turn the page
+when it runs off the right edge. ``transport_state()`` is what the transport
+bar shows, as data, so the bar's labels are tested here and not in a window.
+Editing while rolling is allowed and lands in the song; the schedule already
+handed to the sink is not rewritten, so what you hear is the song as it was
+when Play was pressed.
 
 The menus and the palette are generated from ``core/edit.py``'s registry:
 ``menu_sections()`` and ``palette()`` are the two front doors, and
@@ -128,6 +137,25 @@ class MenuEntry:
     needs_prompt: bool
 
 
+@dataclass(frozen=True)
+class TransportState:
+    """What the transport bar shows. A snapshot, so the window can compare
+    two and touch its widgets only when something changed."""
+
+    rolling: bool
+    play_label: str          # "Play" or "Stop"
+    position: str            # bar:beat.sub, e.g. "9:2.1"
+    tempo: str               # the tempo at the playhead, e.g. "96 bpm"
+    audition: bool
+
+
+def bpm_text(bpm: float) -> str:
+    """``120.0`` -> ``"120 bpm"``, ``99.5`` -> ``"99.5 bpm"``. MIDI stores
+    microseconds per beat, so a "120" file can come back 120.00002."""
+    text = f"{bpm:.1f}".rstrip("0").rstrip(".")
+    return f"{text} bpm"
+
+
 def _entry(key: str, label: str, shortcut: str | None) -> MenuEntry:
     return MenuEntry(key, label, shortcut, key in PROMPTS)
 
@@ -211,6 +239,8 @@ class Editor:
         self.saved_depth = 0
         self.message = ""
         self.preview_dirty = False
+        self.playhead_dirty = True
+        self._playhead_shown: int | None = None
         self.history.on_change.append(self._after_history)
 
     # -- state ------------------------------------------------------------------
@@ -229,6 +259,13 @@ class Editor:
     def _after_history(self, command: Command | None) -> None:
         self._prune_selection()
         self.widget.dirty = True
+
+    def set_sink(self, sink: Sink) -> None:
+        """Swap where the sound goes. Stops first: the old sink owns whatever
+        is rolling, and the new one was never given the schedule."""
+        self.transport.stop()
+        self.sink = sink
+        self.transport.sink = sink
 
     def _prune_selection(self) -> None:
         if not self.selection:
@@ -298,12 +335,68 @@ class Editor:
         x0, _, x1, _ = tick_rect(w.layout, w.first_cell, self._tpc, 0, note.start, note.end)
         return x1
 
+    def ruler_hit(self, x: float, y: float) -> int | None:
+        """The tick of the cell under a point in the ruler, or None."""
+        w = self.widget
+        if w.plan is None:
+            return None
+        cell = w.layout.ruler_cell(x, y, w.first_cell, w.width)
+        return None if cell is None else w.tick_at_col(cell)
+
+    # -- the transport ----------------------------------------------------------
+
+    def seek(self, tick: int) -> None:
+        """Put the playhead at ``tick``; if rolling, carry on from there."""
+        tick = max(0, tick)
+        t = self.transport
+        if t.rolling:
+            t.play(tick)
+        else:
+            t.position()            # settles a schedule that ran out, which would overwrite us
+            t.playhead = tick
+        self.playhead_dirty = True
+
+    def frame(self) -> int:
+        """Once a frame, from the window. Reads the clock, turns the page
+        when the playhead runs off the right edge, and notes whether its
+        line needs repainting. Returns the playhead's tick."""
+        t = self.transport
+        tick = t.position()
+        if t.rolling:
+            self.widget.follow(tick)
+        if tick != self._playhead_shown:
+            self._playhead_shown = tick
+            self.playhead_dirty = True
+        return tick
+
+    def playhead_items(self) -> list[Primitive]:
+        self.playhead_dirty = False
+        tick = self.transport.position()
+        self._playhead_shown = tick
+        return self.widget.playhead_items(tick)
+
+    def transport_state(self) -> TransportState:
+        t = self.transport
+        tick = t.position()
+        return TransportState(
+            rolling=t.rolling,
+            play_label="Stop" if t.rolling else "Play",
+            position=self.widget.view.bars.position(tick),
+            tempo=bpm_text(self.song.tempo_at(tick).bpm),
+            audition=t.audition_enabled,
+        )
+
     # -- the pointer ------------------------------------------------------------
 
     def press(self, x: float, y: float, button: int, *, shift: bool = False,
               ctrl: bool = False) -> None:
         if self.gesture is not None:
             return
+        if button == LEFT:
+            tick = self.ruler_hit(x, y)
+            if tick is not None:
+                self.seek(tick)
+                return
         hit = self._hit(x, y)
         if hit is None:
             return
@@ -433,10 +526,24 @@ class Editor:
         """Returns whether the key was the editor's to handle. Unhandled keys
         fall through to navigation in the window."""
         if name == "escape":
+            if self.transport.rolling:
+                self.transport.stop()
+                self.playhead_dirty = True
             if self.gesture is not None:
                 self.cancel()
             elif self.selection:
                 self.deselect()
+            return True
+        if name == "space":
+            if shift:
+                self.play_from_left_edge()
+            else:
+                self.transport.toggle()
+            self.playhead_dirty = True
+            return True
+        if name == "home":
+            self.seek(0)
+            self.widget.go_to_bar(1)
             return True
         if name in ("delete", "backspace"):
             self.delete_selection()
@@ -486,6 +593,15 @@ class Editor:
         self.transport.audition_enabled = not self.transport.audition_enabled
         self.message = f"Audition {'on' if self.transport.audition_enabled else 'off'}"
         return self.transport.audition_enabled
+
+    def play_from_left_edge(self) -> bool:
+        """Shift+Space: play what you are looking at."""
+        w = self.widget
+        return self.transport.play(w.view.cell_to_tick(w.first_cell))
+
+    def rewind(self) -> None:
+        """The |< button: bar 1, rolling or not."""
+        self.seek(0)
 
     def transpose(self, semitones: int) -> None:
         if self.selection:
@@ -640,7 +756,19 @@ class Editor:
             parts.append(self.message)
         return "  ".join(parts)
 
+    def status_line(self) -> str:
+        """The whole status line: ``> 9:2.1`` first while rolling, so it
+        reads as playing, then the widget's hover and the editor's tail."""
+        line = self.widget.status()
+        tail = self.status_tail()
+        if tail:
+            line = f"{line}  {tail}"
+        t = self.transport
+        if t.rolling:
+            line = f"> {self.widget.view.bars.position(t.position())}  {line}"
+        return line
 
-__all__ = ["Editor", "Gesture", "MenuEntry", "PROMPTS", "ACTIONS", "menu_sections",
-           "edit_menu", "all_entries", "palette", "pitch_class", "parse_key",
-           "velocity_change", "LEFT", "RIGHT", "EDGE_PX"]
+
+__all__ = ["Editor", "Gesture", "MenuEntry", "TransportState", "PROMPTS", "ACTIONS",
+           "menu_sections", "edit_menu", "all_entries", "palette", "pitch_class", "parse_key",
+           "velocity_change", "bpm_text", "LEFT", "RIGHT", "EDGE_PX"]

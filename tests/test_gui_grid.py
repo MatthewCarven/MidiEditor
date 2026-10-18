@@ -88,6 +88,26 @@ class TestWidget:
         assert w.render_ms >= 0 and w.plan_ms >= 0
         assert w.plan is not None and w.plan.cols == w.visible_cols
 
+    def test_follow_turns_the_page_to_the_playheads_bar(self):
+        w = widget()
+        w.dirty = False
+        on_screen = w.view.cell_to_tick(w.first_cell + w.visible_cols - 1)
+        assert w.follow(on_screen) is False and not w.dirty
+        before = w.view.cell_to_tick(w.first_cell - 1)
+        assert w.follow(before) is False                 # off to the left is your business
+        past = w.view.cell_to_tick(w.first_cell + w.visible_cols) + 7
+        assert w.follow(past) is True and w.dirty
+        bar = w.view.bars.bar_containing(past)
+        assert w.first_cell == w.view.bar_cell_range(bar)[0]
+        assert w.tick_visible(past)
+
+    def test_follow_copes_with_a_bar_wider_than_the_window(self):
+        w = widget()
+        w.resize(60 + 10 * 14, 760)                       # ten cells: under a bar
+        past = w.view.cell_to_tick(w.first_cell + 12)
+        assert w.follow(past)
+        assert w.tick_visible(past)
+
 
 def test_beats_text():
     assert beats_text(480, 480) == "1 beat"

@@ -98,6 +98,21 @@ class Layout:
         x, y = self.x_of(cell, first_cell), self.y_of(row)
         return x, y, x + self.cell_w - 1, y + self.row_h - 1
 
+    def x_of_tick(self, tick: int, first_cell: int, ticks_per_cell: int) -> float:
+        """Sub-cell x: where a tick falls, not just its cell. The playhead
+        and unsnapped previews move smoothly through a cell; ``x_of`` is
+        the cell's left edge and would make them jump."""
+        return self.gutter_w + (tick - first_cell * ticks_per_cell) / ticks_per_cell * self.cell_w
+
+    def ruler_cell(self, x: float, y: float, first_cell: int, width: int) -> int | None:
+        """The absolute cell under a point in the ruler, or None when the
+        point is in the gutter, past the last column, or not in the ruler."""
+        if y < 0 or y >= self.ruler_h:
+            return None
+        if x < self.gutter_w or x >= self.gutter_w + self.visible_cols(width) * self.cell_w:
+            return None
+        return first_cell + int((x - self.gutter_w) // self.cell_w)
+
     def raw_cell(self, x: float, y: float, first_cell: int, rows: int) -> tuple[int, int]:
         """``(row, absolute cell)`` for a point anywhere, clamped to the grid's
         rows and to cell 0 - for drags that wander off the edge."""
@@ -163,6 +178,7 @@ DEFAULT_THEME: dict[str, tuple[int, int, int, int]] = {
     "preview": (255, 255, 255, 110),      # where a dragged or drawn note will land
     "marquee": (120, 180, 255, 255),      # the selection rectangle
     "erase": (255, 90, 90, 255),          # notes a right-drag sweep will delete
+    "playhead": (255, 255, 255, 230),     # the transport's position, ruler to lane
 }
 
 
@@ -180,11 +196,23 @@ def tick_rect(layout: Layout, first_cell: int, ticks_per_cell: int, row: int,
               start: int, end: int) -> tuple[float, float, float, float]:
     """The rectangle for ``[start, end)`` ticks on ``row`` - sub-cell accurate,
     for previews of unsnapped drags."""
-    tick0 = first_cell * ticks_per_cell
-    x0 = layout.gutter_w + (start - tick0) / ticks_per_cell * layout.cell_w
-    x1 = layout.gutter_w + (end - tick0) / ticks_per_cell * layout.cell_w - 1
+    x0 = layout.x_of_tick(start, first_cell, ticks_per_cell)
+    x1 = layout.x_of_tick(end, first_cell, ticks_per_cell) - 1
     y = layout.y_of(row)
     return x0, y + 1, max(x0 + 1, x1), y + layout.row_h - 1
+
+
+def playhead_plan(layout: Layout, first_cell: int, ticks_per_cell: int, tick: int,
+                  cols: int, rows: int) -> list[Primitive]:
+    """One vertical line from the top of the ruler to the bottom of the
+    lane, or nothing when the tick is off screen. Its own tiny plan, like
+    the hover outline, because it moves every frame while the grid under
+    it does not."""
+    x = layout.x_of_tick(tick, first_cell, ticks_per_cell)
+    if x < layout.gutter_w or x >= layout.gutter_w + cols * layout.cell_w:
+        return []
+    bottom = layout.ruler_h + rows * layout.row_h + layout.lane_h
+    return [Line(x, 0, x, bottom, "playhead")]
 
 
 # --------------------------------------------------------------------------
@@ -324,4 +352,4 @@ def hover_plan(layout: Layout, first_cell: int, row: int, cell: int) -> list[Pri
 
 
 __all__ = ["Rect", "Line", "Label", "Layout", "PaintPlan", "DEFAULT_THEME", "LANE_MARKS",
-           "plan", "hover_plan", "span_rect", "tick_rect"]
+           "plan", "hover_plan", "playhead_plan", "span_rect", "tick_rect"]

@@ -7,30 +7,43 @@ empty to insert and hear it, drag to move, right-click to delete, Shift+drag
 to marquee, Ctrl to ignore snap, drag an edge to resize), a selection, undo,
 an Edit menu and a Notes menu generated from the command registry, a
 command palette on Ctrl+P, and New / Save / Save As with an unsaved-changes
-guard.
+guard. Step 5 made it play: a transport bar under the menu (Play/Stop,
+rewind, the position and tempo, the audition toggle, which MIDI output), a
+playhead that follows the song page by page, and a click in the ruler to
+seek.
 
     seq gui song.mid -t 2
-    python -m midiseq.ui_gui song.mid
+    python -m midiseq.ui_gui song.mid --midi-out "GS Wavetable"
 
 Mouse: wheel scrolls pitches, Shift+wheel scrolls time, Ctrl+wheel changes
-the cell width. Hover names the cell. One modifier per gesture, never two.
+the cell width. Hover names the cell. A left click in the ruler moves the
+playhead there (and restarts playback from there if rolling). One modifier
+per gesture, never two.
 
-Keys: ``.`` and ``,`` zoom the grid finer and coarser (1/4 ... 1/64), also
+Keys: Space plays and stops; Shift+Space plays from the left edge of the
+view; ``.`` and ``,`` zoom the grid finer and coarser (1/4 ... 1/64), also
 Ctrl+= and Ctrl+-; + and - change the cell width; arrows move a cell or a
 pitch, or - with a selection - move the notes (Up/Down transposes,
 Shift+Up/Down by scale degree); Ctrl+Left/Right a bar, PageUp/PageDown a
-screen of pitches, Home/End the first/last bar; Tab and Shift+Tab change
-track; G toggles ghosts; F fits the pitch range; A toggles audition; Q
-quantises the selection to the grid; Del deletes it; Esc deselects; Ctrl+Z /
-Ctrl+Y undo and redo; Ctrl+A selects all; Ctrl+P the palette; Ctrl+N / O / S
-/ Shift+S new, open, save, save as; Ctrl+Q quits.
+screen of pitches, Home the first bar (playhead too), End the last; Tab and
+Shift+Tab change track; G toggles ghosts; F fits the pitch range; A toggles
+audition; Q quantises the selection to the grid; Del deletes it; Esc stops,
+cancels, deselects; Ctrl+Z / Ctrl+Y undo and redo; Ctrl+A selects all;
+Ctrl+P the palette; Ctrl+N / O / S / Shift+S new, open, save, save as;
+Ctrl+Q quits.
+
+Editing while playing is allowed and never crashes, but the schedule the
+sink is playing is the song as it was when Play was pressed: a note moved
+mid-bar sounds in its old place until the next Play. Live-updating the
+running schedule is a later step.
 
 Everything DearPyGui-specific is in this file and ``painter.py``. The state
 is ``grid.GridWidget``, the editing is ``editor.Editor`` and the picture is
 ``paint.plan``; all three run without a window and are tested that way. Two
 rules from the spike hold here: zoom changes the cell width and nothing else
-(no font scale, no widget resize), and the window's size comes from the
-viewport's client area and nowhere else.
+(no font scale, no widget resize - the transport bar is a fixed row above the
+grid and never scales), and the window's size comes from the viewport's
+client area and nowhere else.
 """
 
 from __future__ import annotations
@@ -43,6 +56,7 @@ from typing import Callable
 
 import dearpygui.dearpygui as dpg
 
+from ..audio.ports import list_ports, open_sink
 from ..audio.sink_null import NullSink
 from ..core import io_midi
 from ..core.edit import REGISTRY
@@ -55,20 +69,32 @@ from ..core.model import (
     Song,
     Track,
 )
-from .editor import PROMPTS, Editor, MenuEntry, edit_menu, menu_sections, palette
+from .editor import (
+    PROMPTS, Editor, MenuEntry, TransportState, edit_menu, menu_sections, palette,
+)
 from .grid import GridWidget
 from .painter import DpgPainter
 
 MIDDLE_C = {"c3": MIDDLE_C_YAMAHA, "c4": MIDDLE_C_SCIENTIFIC, "c5": MIDDLE_C_FL}
 
 STATUS_H = 22
+MENU_H = 24
+TRANSPORT_H = 30        # the bar's row; a fixed size, never scaled by zoom
 FLASH_SECONDS = 5.0
+SILENT = "(silent)"     # the output combo's entry for the null sink
 
 WINDOW = "midiseq_window"
 DRAWLIST = "midiseq_grid"
 LAYER_GRID = "midiseq_grid_layer"
 LAYER_GESTURE = "midiseq_gesture_layer"
 LAYER_HOVER = "midiseq_hover_layer"
+LAYER_PLAYHEAD = "midiseq_playhead_layer"
+TRANSPORT_BAR = "midiseq_transport"
+PLAY_BUTTON = "midiseq_play"
+POSITION_TEXT = "midiseq_position"
+TEMPO_TEXT = "midiseq_tempo"
+AUDITION_CHECK = "midiseq_audition_check"
+OUTPUT_COMBO = "midiseq_output"
 STATUS = "midiseq_status"
 TRACK_MENU = "midiseq_track_menu"
 GHOSTS_ITEM = "midiseq_ghosts_item"
@@ -126,6 +152,7 @@ _KEY_SPECS = {
     "home": ("mvKey_Home",), "end": ("mvKey_End",), "tab": ("mvKey_Tab",),
     "escape": ("mvKey_Escape",), "delete": ("mvKey_Delete",),
     "backspace": ("mvKey_Back", "mvKey_Backspace"), "enter": ("mvKey_Return", "mvKey_Enter"),
+    "space": ("mvKey_Spacebar", "mvKey_Space"),
     "plus": ("mvKey_Plus", "mvKey_Equal"), "add": ("mvKey_Add",),
     "minus": ("mvKey_Minus",), "subtract": ("mvKey_Subtract",),
     "period": ("mvKey_Period",), "comma": ("mvKey_Comma",),
@@ -140,7 +167,7 @@ for _name, _attrs in _KEY_SPECS.items():
 
 #: Keys that act once per press, however long they're held. Arrows repeat.
 ONE_SHOT = {"tab", "f", "g", "q", "a", "n", "o", "p", "s", "y", "z", "plus", "add", "minus",
-            "subtract", "period", "comma", "escape", "delete", "backspace", "enter"}
+            "subtract", "period", "comma", "escape", "delete", "backspace", "enter", "space"}
 
 
 # --------------------------------------------------------------------------
@@ -151,10 +178,11 @@ class GridApp:
     def __init__(self, song: Song, path: Path | None = None, *, track: int | None = None,
                  zoom: Zoom = Zoom(16), ghosts: bool = True,
                  middle_c_octave: int = DEFAULT_MIDDLE_C_OCTAVE,
-                 width: int = 1280, height: int = 760) -> None:
+                 width: int = 1280, height: int = 760, midi_out: str | None = None) -> None:
         self.song = song
         self.path = path
-        self.sink = NullSink(keep_log=False)
+        # Opened once; it outlives every song this window shows.
+        self.sink, self.sink_note = open_sink(midi_out)
         self.widget = GridWidget(song, track, zoom, ghosts=ghosts, middle_c_octave=middle_c_octave)
         self.editor = Editor(self.widget, self.sink)
         self.painter = DpgPainter(dpg)
@@ -165,6 +193,7 @@ class GridApp:
         self._status_shown = ""
         self._title_shown = ""
         self._undo_labels = ("", "")
+        self._transport_shown: TransportState | None = None
         self._palette_query: str | None = None
         self._palette_entries: list[MenuEntry] = []
         self._after_save: Callable[[], None] | None = None
@@ -241,13 +270,18 @@ class GridApp:
                                               ("C5  (FL Studio)", MIDDLE_C_FL)):
                             dpg.add_menu_item(label=label, user_data=octave,
                                               callback=lambda s, a, u: self.widget.set_middle_c(u))
-            with dpg.drawlist(width=self.width, height=max(1, self.height - STATUS_H - 30), tag=DRAWLIST):
+            self._build_transport_bar()
+            with dpg.drawlist(width=self.width,
+                              height=max(1, self.height - MENU_H - TRANSPORT_H - STATUS_H),
+                              tag=DRAWLIST):
                 dpg.add_draw_layer(tag=LAYER_GRID)
                 dpg.add_draw_layer(tag=LAYER_GESTURE)
                 dpg.add_draw_layer(tag=LAYER_HOVER)
+                dpg.add_draw_layer(tag=LAYER_PLAYHEAD)
             dpg.add_text("", tag=STATUS, indent=6)
         dpg.set_primary_window(WINDOW, True)
         self._rebuild_track_menu()
+        self.flash(f"MIDI out: {self.sink_note}")
 
         start_dir = str(self.path.parent) if self.path else ""
         with dpg.file_dialog(directory_selector=False, show=False, modal=True,
@@ -281,6 +315,24 @@ class GridApp:
         dpg.render_dearpygui_frame()
         self._on_resize()
 
+    def _build_transport_bar(self) -> None:
+        """One fixed row: Play/Stop, rewind, position, tempo, audition, output.
+        Labels are ASCII because the default font paints anything above
+        U+00FF as a question mark."""
+        state = self.editor.transport_state()
+        ports = list_ports()
+        chosen = self.sink_note if self.sink_note in ports else SILENT
+        with dpg.group(horizontal=True, tag=TRANSPORT_BAR, indent=6):
+            dpg.add_button(label=state.play_label, tag=PLAY_BUTTON, width=52,
+                           callback=lambda: self._toggle_play())
+            dpg.add_button(label="|<", width=30, callback=lambda: self.editor.rewind())
+            dpg.add_text(state.position, tag=POSITION_TEXT)
+            dpg.add_text(state.tempo, tag=TEMPO_TEXT)
+            dpg.add_checkbox(label="Audition", tag=AUDITION_CHECK, default_value=state.audition,
+                             callback=lambda s, a: self._set_audition(bool(a)))
+            dpg.add_combo(items=[SILENT] + ports, default_value=chosen, tag=OUTPUT_COMBO,
+                          width=260, callback=lambda s, a: self._choose_output(str(a)))
+
     @staticmethod
     def _menu_label(e: MenuEntry) -> str:
         return f"{e.label}    {e.shortcut}" if e.shortcut else e.label
@@ -303,14 +355,14 @@ class GridApp:
     # -- songs: new, open, save ----------------------------------------------------
 
     def _install(self, song: Song, path: Path | None) -> None:
+        self.editor.transport.stop()        # the old song's schedule must not outlive it
         old = self.widget
         widget = GridWidget(song, None, old.zoom, ghosts=old.ghosts,
                             middle_c_octave=old.middle_c_octave, layout=old.layout)
         widget.resize(old.width, old.height)
         self.song, self.path, self.widget = song, path, widget
         self.editor = Editor(widget, self.sink)
-        if dpg.does_item_exist(AUDITION_ITEM):
-            dpg.set_value(AUDITION_ITEM, True)
+        self._sync_audition_check()
         self._rebuild_track_menu()
         self._update_title()
 
@@ -495,8 +547,32 @@ class GridApp:
         self.editor.message = f"Audition {'on' if on else 'off'}"
 
     def _sync_audition_check(self) -> None:
-        if dpg.does_item_exist(AUDITION_ITEM):
-            dpg.set_value(AUDITION_ITEM, self.editor.transport.audition_enabled)
+        """The Edit-menu check, the bar's checkbox and the A key are three
+        doors on one flag; whichever moved it, the other two follow."""
+        on = self.editor.transport.audition_enabled
+        for tag in (AUDITION_ITEM, AUDITION_CHECK):
+            if dpg.does_item_exist(tag) and dpg.get_value(tag) != on:
+                dpg.set_value(tag, on)
+
+    def _toggle_play(self) -> None:
+        self.editor.transport.toggle()
+        self.editor.playhead_dirty = True
+
+    def _choose_output(self, name: str) -> None:
+        """The output combo. Stops (``set_sink`` does), closes the old sink if
+        it can be closed, and hands the editor the new one; the song is
+        untouched."""
+        old = self.sink
+        if name == SILENT:
+            sink, note = NullSink(keep_log=False), SILENT
+        else:
+            sink, note = open_sink(name)
+        self.sink, self.sink_note = sink, note
+        self.editor.set_sink(sink)
+        close = getattr(old, "close", None)
+        if callable(close) and old is not sink:
+            close()
+        self.flash(f"MIDI out: {note}")
 
     def _local_mouse(self) -> tuple[float, float]:
         gx, gy = dpg.get_mouse_pos(local=False)
@@ -588,8 +664,6 @@ class GridApp:
             w.scroll_pitches(w.visible_rows)
         elif name == "pgdn":
             w.scroll_pitches(-w.visible_rows)
-        elif name == "home":
-            w.go_to_bar(1)
         elif name == "end":
             w.go_to_bar(w.view.bars.bar_containing(max(0, self.song.end_tick() - 1)).number)
         elif name == "tab":
@@ -624,8 +698,8 @@ class GridApp:
             top = int(dpg.get_item_rect_min(DRAWLIST)[1])
         except Exception:  # noqa: BLE001 - before the first frame
             top = 0
-        if top <= 0 or top > 80:
-            top = 24
+        if top <= 0 or top > 120:
+            top = MENU_H + TRANSPORT_H
         grid_h = max(1, h - top - STATUS_H)
         dpg.configure_item(DRAWLIST, width=w, height=grid_h)
         self.widget.resize(w, grid_h)
@@ -652,32 +726,49 @@ class GridApp:
             if dpg.does_item_exist(REDO_ITEM):
                 dpg.set_item_label(REDO_ITEM, f"Redo {labels[1]}    Ctrl+Y" if labels[1] else "Redo    Ctrl+Y")
 
+    def _update_transport_bar(self) -> None:
+        state = self.editor.transport_state()
+        if state == self._transport_shown:
+            return
+        self._transport_shown = state
+        if dpg.does_item_exist(PLAY_BUTTON):
+            dpg.set_item_label(PLAY_BUTTON, state.play_label)
+            dpg.set_value(POSITION_TEXT, state.position)
+            dpg.set_value(TEMPO_TEXT, state.tempo)
+        self._sync_audition_check()
+
     def frame(self) -> None:
         w, ed = self.widget, self.editor
+        ed.frame()                              # the clock first: it may turn the page
         if w.dirty:
             plan = w.build()
             self.painter.repaint(plan.items, LAYER_GRID)
+            ed.playhead_dirty = True            # its x is relative to the new left edge
         if ed.preview_dirty:
             self.painter.repaint(ed.preview_items(), LAYER_GESTURE)
         if w.hover_dirty:
             self.painter.repaint(w.hover_items(), LAYER_HOVER)
+        if ed.playhead_dirty:
+            self.painter.repaint(ed.playhead_items(), LAYER_PLAYHEAD)
         if self._flash is not None and time.perf_counter() >= self._flash[1]:
             self._flash = None
         if self._flash is None:
-            tail = ed.status_tail()
-            self._set_status(f"{w.status()}  {tail}" if tail else w.status())
+            self._set_status(ed.status_line())
+        self._update_transport_bar()
         self._update_title()
         self._update_undo_labels()
         self._palette_refresh()
 
     def _screenshot_pose(self) -> None:
-        """For ``--screenshot``: select the first note on screen and leave an
-        insert drag in progress, so the picture shows a selection outline and
-        a gesture preview as well as the grid. Nothing is committed."""
+        """For ``--screenshot``: select the first note on screen, leave an
+        insert drag in progress and park the playhead a few cells in, so the
+        picture shows a selection outline, a gesture preview and the playhead
+        as well as the grid. Nothing is committed."""
         w, ed = self.widget, self.editor
         m = w.matrix
         if m is None or w.plan is None:
             return
+        ed.seek(w.tick_at_col(w.first_cell + 12))
         for ri, row in enumerate(m.rows[:w.plan.rows]):
             for ci, cell in enumerate(row.cells):
                 col = m.columns[ci].cell
@@ -710,6 +801,10 @@ class GridApp:
                     break
             self.frame()
             dpg.render_dearpygui_frame()
+        self.editor.transport.stop()
+        close = getattr(self.sink, "close", None)
+        if callable(close):
+            close()
         dpg.destroy_context()
         return 0
 
@@ -727,8 +822,11 @@ def empty_song() -> Song:
 
 def launch(path: str | None = None, *, track: int | None = None, zoom: Zoom = Zoom(16),
            middle_c_octave: int = DEFAULT_MIDDLE_C_OCTAVE, ghosts: bool = True, bar: int = 1,
-           width: int = 1280, height: int = 760, screenshot: str | None = None) -> int:
-    """Open the window. Shared by ``seq gui`` and ``python -m midiseq.ui_gui``."""
+           width: int = 1280, height: int = 760, screenshot: str | None = None,
+           midi_out: str | None = None) -> int:
+    """Open the window. Shared by ``seq gui`` and ``python -m midiseq.ui_gui``.
+    ``midi_out`` names the output port (a substring, as ``open_sink`` takes
+    it); None picks the default, and no port at all is silent, not fatal."""
     if path is None:
         song, file = empty_song(), None
     else:
@@ -746,7 +844,8 @@ def launch(path: str | None = None, *, track: int | None = None, zoom: Zoom = Zo
         return 2
     try:
         app = GridApp(song, file, track=track, zoom=zoom, ghosts=ghosts,
-                      middle_c_octave=middle_c_octave, width=width, height=height)
+                      middle_c_octave=middle_c_octave, width=width, height=height,
+                      midi_out=midi_out)
     except ValueError as exc:
         print(f"seq gui: {exc}", file=sys.stderr)
         return 1
@@ -766,13 +865,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--bar", type=int, default=1, help="start with this bar at the left edge")
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=760)
+    ap.add_argument("--midi-out", metavar="NAME", default=None,
+                    help="the MIDI output to play through (a substring of its name)")
     ap.add_argument("--screenshot", metavar="PNG", default=None,
                     help="paint once, write the frame buffer to PNG, quit (development)")
     args = ap.parse_args(argv)
     return launch(args.file, track=args.track, zoom=Zoom(args.zoom),
                   middle_c_octave=MIDDLE_C[args.middle_c], ghosts=not args.no_ghosts,
                   bar=args.bar, width=args.width, height=args.height,
-                  screenshot=args.screenshot)
+                  screenshot=args.screenshot, midi_out=args.midi_out)
 
 
 __all__ = ["GridApp", "launch", "main", "empty_song"]

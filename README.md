@@ -6,12 +6,14 @@ note starts there.
 
 **Design and reasoning: [PLAN.md](PLAN.md). Progress: [TODO.md](TODO.md).**
 
-Steps 1 to 5 are done: the `core/` skeleton, the `.mid` writer, text editing
+Steps 1 to 6 are done: the `core/` skeleton, the `.mid` writer, text editing
 that round-trips, a window that shows the grid, editing in that window — click
 to write notes, drag to move them, undo, a Notes menu and a command palette
-generated from the command registry — and sound: every edit is auditioned and
+generated from the command registry — sound: every edit is auditioned and
 the song plays through a MIDI output (on Windows, the built-in GS Wavetable
-with nothing installed), with a playhead you can click the ruler to move.
+with nothing installed), with a playhead you can click the ruler to move —
+and the same editor in a terminal, keyboard only, with a `:` palette over
+the same registry.
 
 ## Try it
 
@@ -20,6 +22,7 @@ pip install -e ".[gui]"
 python tools/make_demo.py examples/bluesy.mid
 seq cat examples/bluesy.mid -t 2 -b 9-11 -w 3
 seq gui examples/bluesy.mid -t 2 -b 9
+seq tui examples/bluesy.mid -t 2 -b 9
 ```
 
 If `seq` isn't found after installing — common on Windows, where pip's `Scripts`
@@ -86,6 +89,8 @@ seq check FILE...            does it survive a round trip?
 seq build FILE [-i SOURCE] [-o OUT] [-n]
 seq gui   [FILE] [-t TRACK] [-z 1/16] [-b BAR] [--no-ghosts] [--middle-c c3|c4|c5]
           [--midi-out NAME]
+seq tui   [FILE] [-t TRACK] [-z 1/16] [-b BAR] [--no-ghosts] [--middle-c c3|c4|c5]
+          [--midi-out NAME]                              the same, in the terminal
 seq play  FILE [-b BAR] [--port NAME] [--seconds N]      headless, Ctrl+C stops
 ```
 
@@ -192,6 +197,67 @@ once a second; Ctrl+C releases every sounding note before exiting.
 Audition never fires while the transport rolls, and deleting makes no sound —
 both rules live in `core/transport.py`, which is still the only module that
 thinks in seconds.
+
+## The terminal
+
+`seq tui song.mid` opens the same grid in the terminal (`python -m midiseq
+tui` or `python -m midiseq.ui_tui` do the same), through Textual. It is the
+picture `seq cat` prints, live: the bar header, the ruler, the shaded
+accidental rows, ghosts, the `~` flag, the velocity lane, and a cursor —
+`▼` over its column in the header, `>` in the gutter of its row — with the
+status line underneath naming the square: pitch, MIDI number,
+bar:beat.subdivision, length, velocity. Colour is shading on top of that,
+so the picture still reads without it.
+
+It is the window's mouse model at a cursor. What a click does there, Enter
+does here, and it depends only on what is under the cursor — no tool modes:
+
+```
+    on a note                           on empty space
+  Enter             select + play     Enter        insert one cell + play
+  Shift+Enter or S  add to set
+  Del               delete
+```
+
+Everything that acts on notes acts on **the selection, or else the note
+under the cursor**, so a single note never needs selecting first:
+
+```
+arrows                  cursor a cell / a pitch     Shift+Left/Right     nudge a cell
+Ctrl+Left/Right         cursor a bar                Shift+Up/Down        transpose a semitone
+PageUp/PageDown         cursor an octave            Ctrl+Shift+Up/Down   a scale degree
+Home / End              bar 1 (and rewind) / last   Ctrl+Up/Down         velocity by five
+Tab / Shift+Tab         next / previous track       + / -                a cell longer / shorter
+. / ,                   finer / coarser grid        Q                    quantise to the grid
+G / F                   ghosts on/off / fit pitches Del                  delete
+Space                   play / stop                 Ctrl+A / Esc         select the track / deselect
+Shift+Space or Shift+P  play from the cursor        Ctrl+Z / Ctrl+Y      undo / redo
+P                       playhead to the cursor      Ctrl+X / C / V / D   cut, copy, paste, duplicate
+A                       audition on/off             :  (or Ctrl+P)       the command palette
+Ctrl+S / Ctrl+Shift+S   save / save as              Ctrl+Q               quit (twice, with unsaved changes)
+```
+
+The arrows always move the cursor — a keyboard has nothing else to move it
+with — so the window's selection-moving arrows wear Shift here, and the
+cursor follows a note it was on when the note moves: Shift+Up three times
+carries one note up a minor third. The view follows the cursor by the bar:
+walk off the right edge and the page turns to the cursor's bar. Paste lands
+at the cursor, the one position a keyboard always has.
+
+`:` opens the palette: type `inv`, get Invert; Enter runs the highlighted
+match, Up and Down pick another, Esc closes. It is the window's palette —
+the same registry, the same entries, the same questions, asked one at a
+time on the same line (`Invert - Axis note, e.g. G4 (blank: the midpoint):`),
+blank taking the default — plus the terminal's own: Save, Save as, Go to
+bar, Track, Play / Stop, Rewind, Quit.
+
+Space plays from the playhead through the same sink as the window, chosen
+the same way (`--midi-out NAME`, the GS Wavetable by default, else the first
+port, else silent with the reason kept in the status line). The playhead is
+a coloured column that turns the page when it runs off the right edge —
+unless you have moved the view away, in which case it is yours until the
+playhead is back in it. The lane is painted, not editable: Ctrl+Up/Down is
+how velocity moves here.
 
 ## Editing in a text editor
 
@@ -305,7 +371,11 @@ midiseq/
     grid.py      the widget's state: scroll, zooms, track, hover, status. No toolkit.
     editor.py    the mouse model, selection, undo, audition, the registry's doors. No toolkit.
     app.py       the window: menus, prompts, palette, keys, file dialogs, frames
-  ui_tui/        Textual, step 6
+  ui_tui/        Textual
+    view.py      the screen's state: scroll, zoom, track, the cursor; the frame as lines and roles. No toolkit.
+    editor.py    the keyboard model: key names to commands, the target rule, the registry's door. No toolkit.
+    palette.py   the `:` line as a state machine: search, questions, run. No toolkit.
+    app.py       the terminal: the pane, the status line, the palette's two lines, the timer
   cli/           seq
 ```
 
@@ -315,8 +385,22 @@ midiseq/
 python -m pytest
 ```
 
-Three hundred and seventy-seven tests, all on the design invariants rather than the
-plumbing, and none of them opens a window.
+Four hundred and fifty-three tests, all on the design invariants rather than
+the plumbing, and none of them opens a window or a terminal.
+
+Step 6's tests judge the terminal as text: every line is the width and the
+columns stop at it, the cursor is `▼` and `>` where it should be, walking
+off the right edge turns the page to the cursor's bar, zooming keeps the
+cursor on its tick, the 3/4 bar is three beats wide, the playhead is one
+column from header to lane and nothing when off screen. The keyboard model
+is driven by key names: Enter on empty inserts one cell and plays it, Del
+takes the cursor note without a selection and the selection with one,
+Shift+Up carries the cursor with the note, Q lands the off-grid F4 on the
+bar line, `-` stops at one cell, `:tsd` asks two questions and `abc` for a
+number comes back as a sentence, Ctrl+S writes a file that loads with the
+edit, Ctrl+Q needs two presses with unsaved changes. Five run the Textual
+app headless with its Pilot, for the wiring only: keys reach the editor, Tab
+changes track rather than focus, Ctrl+C copies rather than quitting.
 
 Step 4's tests drive the mouse model with coordinates: a click on empty
 inserts one cell and plays it, a drag draws the length out, Ctrl ignores snap

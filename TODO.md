@@ -328,11 +328,29 @@ one layer up: **only what you actually changed changes.**
       with nothing ahead does the |< for you, and switching the output while
       rolling carries on from where it was instead of stopping.
 
-## Step 6 — TUI
+## Step 6 — TUI ✅ built 2026-10-19, awaiting eyes and ears
 
-- [ ] Textual app reusing `core/render.py` and `core/glyphs.py`
-- [ ] `:` palette
-- [ ] **Test:** keyboard-only editing
+- [x] Textual app reusing `core/render.py` and `core/glyphs.py` — `midiseq/ui_tui/`:
+  `view.py` (the picture and the cursor), `editor.py` (keys to commands),
+  `palette.py` (the `:` line), `app.py` (the only Textual import); `seq tui FILE`
+- [x] `:` palette — the window's entries and prompts, one question per line, plus
+  Save / Save as / Go to bar / Track / Play / Rewind / Quit
+- [ ] **Test:** keyboard-only editing — Matthew's eyes and ears; what to try is at the
+  end of WORKLOG.md's step 6 entry
+- Surfaced while building it:
+  - [ ] lift what both UIs share out of `ui_gui/` — the palette entries, `PROMPTS`,
+    `parse_key`, `velocity_change`, `Editor.build` (the TUI has its own copy as
+    `build_command`), `default_track`, `beats_text` — into one toolkit-free module
+    both import; today `ui_tui/` imports them from `ui_gui/editor.py` and `grid.py`
+  - [ ] New / Open in the terminal (Save and Save as are there; `seq tui` opens one file)
+  - [ ] an editable lane in the terminal — painted only; Ctrl+Up/Down moves velocity
+  - [ ] a MIDI output chooser in the terminal (`--midi-out` only; the window has a combo)
+  - [ ] velocity by one has no key in the terminal: Ctrl+Shift+Up/Down is the scale
+    degree there; the palette's Set velocity takes `+1`
+  - [ ] check what Windows Terminal delivers for Shift+Enter and Shift+Space — S and
+    Shift+P are the spellings that don't need them
+  - [ ] a mouse in the terminal: Textual gives clicks for free, and `TextView._xs`
+    already knows which column is under which character
 
 ## Step 7 — the good stuff
 

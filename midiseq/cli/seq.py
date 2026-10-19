@@ -188,6 +188,26 @@ def build_parser() -> argparse.ArgumentParser:
                      help="MIDI output port, matched as a substring (default: the GS "
                           "Wavetable if present, else the first port)")
 
+    tui = sub.add_parser(
+        "tui", help="open the grid in the terminal",
+        description="The same grid as `seq cat`, editable from the keyboard: "
+                    "Enter writes a note under the cursor, `:` opens the command "
+                    "palette, Space plays. Needs Textual (pip install -e \".[tui]\").")
+    tui.add_argument("file", nargs="?", help="a .mid to open (default: an empty song)")
+    tui.add_argument("-t", "--track", type=int, default=None,
+                     help="track index (default: the first one with notes)")
+    tui.add_argument("-z", "--zoom", type=_zoom, default=Zoom(16),
+                     help="1/4, 1/8, 1/16, 1/32, 1/64  (default 1/16)")
+    tui.add_argument("-b", "--bar", type=int, default=1,
+                     help="start with this bar at the left edge")
+    tui.add_argument("--no-ghosts", action="store_true",
+                     help="don't show other tracks behind this one")
+    tui.add_argument("--middle-c", choices=sorted(MIDDLE_C), default="c4",
+                     help="octave labelling: c4 scientific (default), c3 Yamaha, c5 FL")
+    tui.add_argument("--midi-out", metavar="NAME", default=None,
+                     help="MIDI output port, matched as a substring (default: the GS "
+                          "Wavetable if present, else the first port)")
+
     play = sub.add_parser(
         "play", help="play the file to a MIDI output",
         description="Rolls from a bar to the end, printing the playhead once a "
@@ -231,6 +251,16 @@ def main(argv: list[str] | None = None) -> int:
         return launch(args.file, track=args.track, zoom=args.zoom,
                       middle_c_octave=MIDDLE_C[args.middle_c],
                       ghosts=not args.no_ghosts, bar=args.bar, midi_out=args.midi_out)
+    if args.command == "tui":
+        try:
+            from ..ui_tui.app import launch as launch_tui
+        except ImportError as exc:
+            print(f"seq tui: {exc}\nThe terminal editor needs Textual: "
+                  f"pip install -e \".[tui]\"", file=sys.stderr)
+            return 1
+        return launch_tui(args.file, track=args.track, zoom=args.zoom,
+                          middle_c_octave=MIDDLE_C[args.middle_c],
+                          ghosts=not args.no_ghosts, bar=args.bar, midi_out=args.midi_out)
 
     path = Path(args.file)
     if not path.exists():

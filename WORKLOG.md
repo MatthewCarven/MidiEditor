@@ -901,6 +901,124 @@ Method note: the notebook's heredoc rule bit again - a three-hundred-line
 quoted heredoc with no backslash in it failed to parse in the Bash tool. The
 patch went to the scratchpad as a file and ran from there, as the rule says.
 
+## 2026-10-19 — Step 6 built: the terminal
+
+`seq tui examples/bluesy.mid -b 9`: the same grid in a terminal, through
+Textual 0.71, keyboard only. One side session, no agents, by hand.
+
+### What went in
+
+- `midiseq/ui_tui/view.py` — `TextView`, the terminal's `GridWidget`:
+  scroll, zoom, track, ghosts, plus a cursor (a pitch and an absolute cell)
+  that the view follows by the bar. `build()` renders the visible bars and
+  rows through `core/render.py`, lays them out with `core/glyphs.py` - the
+  picture `seq cat` prints, so the terminal and the text view agree by
+  construction - slices the matrix to the columns that fit the width, and
+  hands back a `Frame`: lines plus spans by role (note, selected, ghost,
+  accidental, playhead, cursor). The cursor is in the text too (`▼` in
+  the header, `>` in the gutter, both glyphs.py's), so a colourless
+  terminal still reads.
+- `midiseq/ui_tui/editor.py` — the keyboard model. Enter is a click:
+  select and play a note, or insert one cell and play it. Everything that
+  acts on notes acts on the selection, or else the note under the cursor.
+  The arrows always move the cursor, so the window's selection-moving
+  arrows wear Shift; the cursor follows a note it was on when the note
+  moves. `frame()` is the window's without the pixels: reads the clock,
+  turns the page. Save, Save as, a two-press quit with unsaved changes.
+- `midiseq/ui_tui/palette.py` — the `:` line as a state machine: search,
+  then one prompt per field, blank meaning the default, then `(key, raw)`
+  for the editor to run. The entries, prompts and parsers are the window's
+  (`ui_gui/editor.py`, toolkit-free), so the two front doors can't drift.
+- `midiseq/ui_tui/app.py` — the only module that imports Textual: a pane
+  that paints the frame as one Rich `Text`, a status line, two `Static`s
+  for the palette, a 20 Hz timer for the playhead, Ctrl+C rebound from
+  Textual's quit to Copy. `open_sink(--midi-out)` as the window; the
+  silent reason stays in the status line.
+- `seq tui` in `cli/seq.py`, the same options as `seq gui`.
+- 76 tests: the view judged as text (width, cursor marks, page turns,
+  zoom keeping the cursor's tick, the 3/4 bar, roles, the playhead
+  column), the editor by key names (every key in the table, the target
+  rule, the palette's questions and a bad answer coming back as a
+  sentence, save, the two-press quit), the palette's state machine, five
+  Textual Pilot runs headless (the pane paints at the terminal's size,
+  keys reach the editor and Tab is ours not focus traversal, Ctrl+C
+  copies, the palette shows, Ctrl+Q quits), and `seq tui` handing its
+  options over. 453 in all, 3.5 s.
+
+### Decisions
+
+- **Enter inserts one cell, not one beat**, and `+`/`-` stretch it: the
+  click's rule, so the two UIs teach the same thing. One beat would have
+  saved three keys at 1/16 and taught a different grammar.
+- **Arrows move the cursor; Shift moves notes.** The window has a mouse
+  to navigate with and arrows to spare; the terminal doesn't. Chromatic on
+  Shift+Up/Down, the scale degree on Ctrl+Shift+Up/Down - which in the
+  window is velocity by one; the terminal has no key for that.
+- **The target rule** (the selection, else the cursor note), so a single
+  note is never selected first. The window says "nothing selected"; the
+  terminal says "nothing selected, and no note under the cursor".
+- **Paste lands at the cursor**, not the playhead: the keyboard's one
+  position that is always yours.
+- **The view follows the cursor by the bar**: the page turns to the
+  cursor's bar, or to the cursor itself when a bar is wider than the screen
+  (1/64 at 80 columns).
+- **No Textual `Input` for the palette.** Every key routes through the
+  grid pane, which stays focused; the `:` line is a `Static` drawn from the
+  editor's state. One key path, no focus to manage, and the whole palette
+  is tested without a terminal.
+- **The TUI imports the window's toolkit-free modules** (`PROMPTS`, the
+  entries, `parse_key`, `velocity_change`, `default_track`, `beats_text`)
+  rather than copying them. A UI importing another UI's toolkit-free layer
+  is new here; lifting those into a shared module is in the TODO.
+- **Shrinking stops at one cell**: `ResizeNotes` would happily make a
+  one-tick note, which the grid still draws and you still can't see.
+- **S and Shift+P** double for Shift+Enter and Shift+Space, which some
+  terminals deliver as plain Enter and Space.
+
+### Not done, and in the TODO
+
+New / Open in the terminal, an editable lane, an output chooser, a mouse,
+and the lift of the shared palette model out of `ui_gui/`.
+
+### Eyes
+
+Mine, from the Code tab's terminal panel: `python -m midiseq tui
+examples/bluesy.mid -b 9` opened on the Pad track (the first with notes,
+as `seq cat` picks), drew bars 9 to 12 across 114 columns with the Rhodes
+as ghosts, the lane, the `▼` and `>` cursor marks and the status line
+ending in "Microsoft GS Wavetable Synth 0". No keys could be sent from
+here, so the rest is Matthew's. The tab was closed again so it would not
+hold the GS port.
+
+What to try, Matthew (copy the example first - Ctrl+S writes the file you
+opened):
+
+    copy examples\bluesy.mid scratch.mid
+    seq tui scratch.mid -t 2 -b 9
+
+- The picture: is it `seq cat`'s? The cursor cell is reverse video, its
+  column has `▼` in the header and its row `>` in the gutter; accidental
+  rows are shaded; the playhead is a red column at bar 1.
+- Arrows move the cursor; Ctrl+Left/Right a bar; walk off the right edge
+  and the page should turn to the cursor's bar.
+- Enter on an empty square: `x·` and a blip. `+` three times: `x──────·`.
+  `-` back. Del removes it. Ctrl+Z, Ctrl+Y.
+- Enter on the loud G4 at 9:2: it turns yellow and sounds. Shift+Up/Down,
+  Shift+Left/Right, Ctrl+Shift+Up/Down, Ctrl+Up/Down - the cursor should
+  ride along. Q on the `F4~` row at bar 11 straightens it.
+- Ctrl+A, Shift+Up, Ctrl+Z.
+- Space plays from bar 1 and the page turns when the red column leaves the
+  screen; Esc stops. Shift+Space (or Shift+P) plays from the cursor; P
+  parks the playhead there; Home rewinds.
+- `:` then `inv` Enter Enter; `:` `tsd` Enter `2` Enter `A minor` Enter;
+  `:` `go` Enter `11` Enter; Tab for the next track.
+- Ctrl+S, then Ctrl+Q; or Ctrl+Q twice to discard.
+
+What I could not check from here: whether Windows Terminal delivers
+Shift+Enter, Shift+Space and Ctrl+Shift+arrows (S and Shift+P are the
+spellings that don't need the first two), how the colours sit in your
+theme, and how the playhead's 20 Hz repaint feels.
+
 ### Ears, round two
 
 2026-10-19, Matthew tried the four window changes: all work. Two calls from

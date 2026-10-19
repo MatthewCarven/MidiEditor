@@ -155,6 +155,22 @@ class TestSchedulerByHand:
         assert sorted(releases) == sorted([off(60), off(60, 9)])
         assert port.messages.count(off(62)) == 1 and off(64) not in port.messages
 
+    def test_stop_releases_a_stacked_pitch_once_per_outstanding_start(self):
+        # Two notes overlapping on one key: the first note's release must not
+        # make the sink forget the second is still sounding (it used to - a
+        # set, not a count - and a stop between the two offs left it stuck).
+        clock = FakeClock()
+        sink, port = make_sink(clock)
+        t0 = clock.now + LEAD
+        sink.start(make_schedule(note(60, 0.0, 0.5), note(60, 0.2, 1.0)))
+        clock.now = t0 + 0.6
+        sink.pump()
+        assert port.messages == [on(60), on(60), off(60)]
+        sink.stop()
+        sink.pump()
+        assert port.messages == [on(60), on(60), off(60), off(60)]
+        assert port.messages.count(on(60)) == port.messages.count(off(60))
+
     def test_rolling_ends_by_itself_after_the_last_event(self):
         clock = FakeClock()
         sink, port = make_sink(clock)

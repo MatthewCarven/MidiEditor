@@ -110,7 +110,7 @@ class RtMidiSink:
         self._heap: list[tuple[float, int, Message]] = []
         self._urgent: collections.deque[Message] = collections.deque()
         self._seq = 0
-        self._sounding: set[tuple[int, int]] = set()
+        self._sounding: collections.Counter[tuple[int, int]] = collections.Counter()
         self._t0 = 0.0
         self._rolling = False
         self._last_seq: int | None = None
@@ -244,8 +244,11 @@ class RtMidiSink:
         self._heap.clear()
         self._rolling = False
         self._last_seq = None
-        for ch, pitch in sorted(self._sounding):
-            self._urgent.append((NOTE_OFF | ch, pitch, 0))
+        # One release per outstanding start: a key can be stacked (two notes
+        # overlapping on one pitch, or an audition over the song), and the
+        # first release must not make the sink forget the second.
+        for (ch, pitch), count in sorted(self._sounding.items()):
+            self._urgent.extend([(NOTE_OFF | ch, pitch, 0)] * count)
         self._sounding.clear()
 
     def _seconds_until_due(self) -> float | None:
@@ -281,9 +284,13 @@ class RtMidiSink:
             return
         status, channel = message[0] & 0xF0, message[0] & 0x0F
         if status == NOTE_ON and len(message) > 2 and message[2] > 0:
-            self._sounding.add((channel, message[1]))
+            self._sounding[(channel, message[1])] += 1
         elif status in (NOTE_OFF, NOTE_ON) and len(message) > 1:
-            self._sounding.discard((channel, message[1]))
+            key = (channel, message[1])
+            if self._sounding[key] > 1:
+                self._sounding[key] -= 1
+            else:
+                self._sounding.pop(key, None)
 
 
 def _run(ref: "weakref.ref[RtMidiSink]", cv: threading.Condition) -> None:

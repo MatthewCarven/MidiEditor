@@ -1019,6 +1019,27 @@ Shift+Enter, Shift+Space and Ctrl+Shift+arrows (S and Shift+P are the
 spellings that don't need the first two), how the colours sit in your
 theme, and how the playhead's 20 Hz repaint feels.
 
+### Eyes, first pass — the chords the terminal keeps
+
+Matthew, same day, in Windows Terminal: *"shift enter and enter seem to
+do the same thing and shift space makes no difference to space."* The
+limit flagged above, confirmed: a terminal only promises to deliver
+characters, and Shift adds nothing to Enter or Space. Looked at the rest
+of the table with that in mind: Ctrl+Shift+S and Ctrl+Shift+Z are the
+same control characters as Ctrl+S and Ctrl+Z, so they never arrive
+either; Windows Terminal binds Ctrl+V to its own paste and
+Ctrl+Shift+Up/Down to scrolling, so those never reach the app at all.
+
+So the terminal's keys are plain letters now, and the chords stay as
+aliases for terminals that do deliver them: **S** adds to the set,
+**Shift+P** plays from the cursor, **X / C / V / D** are cut, copy,
+paste, duplicate, **[** and **]** move a scale degree down and up,
+**Ctrl+Y** is redo, Save as lives in the palette, and **?** shows the
+whole table in the terminal (the palette's "Keys" too). The table is one
+list, `KEY_HELP` in `ui_tui/editor.py`, that `?` draws and the README
+quotes. Ctrl+Up/Down and Shift+Tab are unconfirmed and in the TODO with
+their fallbacks. Two tests more (the brackets, the table): 455.
+
 ### Ears, round two
 
 2026-10-19, Matthew tried the four window changes: all work. Two calls from

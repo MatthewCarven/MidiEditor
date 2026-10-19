@@ -84,6 +84,15 @@ class TestTheApp:
             assert not app.query_one("#palette_line").display
         run(body)
 
+    def test_question_mark_shows_the_key_table(self):
+        async def body(app, pilot):
+            await pilot.press("question_mark")
+            table = app.query_one("#palette_list")
+            assert table.display and "Shift+P" in plain(table) and "[ / ]" in plain(table)
+            await pilot.press("escape")
+            assert not table.display
+        run(body)
+
     def test_ctrl_q_quits_a_clean_song(self):
         app = run(lambda app, pilot: pilot.press("ctrl+q"))
         assert app.editor.want_quit and app.return_code == 0

@@ -2,11 +2,13 @@
 
     on a note                      on empty space
   Enter        select + play     Enter        insert one cell + play
-  Shift+Enter  add to set
+  S            add to set
   Del          delete
 
 Everything that acts on notes acts on the selection, or else the note
 under the cursor; the arrows move the cursor and wear Shift to move notes.
+Chords Windows Terminal can't deliver have plain spellings (S, Shift+P,
+X / C / V / D, [ and ]); the chords stay as aliases.
 """
 
 from __future__ import annotations
@@ -157,13 +159,15 @@ class TestTheTargetRule:
         ed.key("shift+left")
         assert find(song, *G4) is not None and g.cursor_tick == G4[1]
 
-    def test_ctrl_shift_up_moves_a_scale_degree(self):
+    def test_the_brackets_move_a_scale_degree(self):
         song, g, ed, sink, _ = make()
         at(g, *G4)
-        ed.key("ctrl+shift+up")
+        ed.key("right_square_bracket", "]")
         assert find(song, 69, G4[1]) is not None      # G to A in C major
-        ed.key("ctrl+shift+down")
+        ed.key("left_square_bracket", "[")
         assert find(song, *G4) is not None
+        ed.key("ctrl+shift+up")                       # the window's chord, where it arrives
+        assert find(song, 69, G4[1]) is not None
 
     def test_ctrl_up_and_down_nudge_velocity_by_five(self):
         song, g, ed, sink, _ = make()
@@ -311,11 +315,11 @@ class TestTheClipboard:
         at(g, *G4)
         ed.key("enter")
         at(g, *A4)
-        ed.key("shift+enter")
-        ed.key("ctrl+c")
+        ed.key("s")
+        ed.key("c")
         assert ed.message == "Copied 2 notes"
         at(g, 60, BAR12)
-        ed.key("ctrl+v")
+        ed.key("v")
         assert find(song, 67, BAR12) is not None and find(song, 69, BAR12 + BEAT) is not None
         assert ed.selection == {find(song, 67, BAR12).nid, find(song, 69, BAR12 + BEAT).nid}
         assert ed.message == "Pasted 2 notes at 12:1.1"
@@ -329,13 +333,13 @@ class TestTheClipboard:
     def test_cut_and_duplicate(self):
         song, g, ed, sink, clock = make()
         at(g, *G4)
-        ed.key("ctrl+d")
+        ed.key("d")
         assert find(song, 67, G4[1] + 460) is not None
         ed.key("ctrl+z")
-        ed.key("ctrl+x")
+        ed.key("x")
         assert find(song, *G4) is None and ed.clipboard == ((67, 0, 460, 104),)
-        ed.key("ctrl+v")
-        assert ed.message == "Paste: clipboard is empty" or find(song, *G4) is not None
+        ed.key("ctrl+v")                              # the window's chord still pastes where it arrives
+        assert find(song, *G4) is not None
 
 
 class TestTheView:
@@ -366,6 +370,15 @@ class TestTheView:
         assert (g.cursor_pitch, g.cursor_tick) == (55, BAR9 + BAR)
         assert ed.picture().cursor is not None
         assert "G3" in ed.status_line()
+
+    def test_question_mark_shows_the_keys_and_any_key_puts_them_away(self):
+        song, g, ed, sink, clock = make()
+        cell = g.cursor_cell
+        assert ed.key("question_mark", "?") and ed.help_open
+        assert ed.key("right") and not ed.help_open
+        assert g.cursor_cell == cell                  # the key that closed the table did nothing else
+        ed.run_key("app.help")
+        assert ed.help_open
 
     def test_unknown_keys_are_not_handled(self):
         song, g, ed, sink, clock = make()

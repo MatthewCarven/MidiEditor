@@ -4,8 +4,9 @@
 same glyph grid ``seq cat`` prints, the ruler, the velocity lane and the
 cursor - by mapping the frame's roles to colours; the status line sits
 under it, and the ``:`` palette is a match list and a prompt line above
-the status line while it is open. Every key reaches ``Editor.key`` by its
-Textual name, and a timer calls ``Editor.frame`` twenty times a second so
+the status line while it is open (``?`` shows the key table in the same
+place). Every key reaches ``Editor.key`` by its Textual name, and a timer
+calls ``Editor.frame`` twenty times a second so
 a rolling playhead moves and the page turns. Sound goes through the same
 sink the window opens, chosen the same way (``--midi-out``, the GS
 Wavetable by default, silent with the reason in the status line).
@@ -37,7 +38,7 @@ from ..core.model import (
     Song,
     Track,
 )
-from .editor import Editor
+from .editor import KEY_HELP, Editor
 from .view import Frame, TextView
 
 MIDDLE_C = {"c3": MIDDLE_C_YAMAHA, "c4": MIDDLE_C_SCIENTIFIC, "c5": MIDDLE_C_FL}
@@ -144,10 +145,12 @@ class SeqApp(App):
         line = self.query_one("#palette_line", Static)
         matches = self.query_one("#palette_list", Static)
         line.display = p.is_open
-        matches.display = p.searching and bool(p.matches)
+        matches.display = ed.help_open or (p.searching and bool(p.matches))
         if p.is_open:
             line.update(Text(p.line + "▏", no_wrap=True, overflow="crop", end=""))
-        if matches.display:
+        if ed.help_open:
+            matches.update(Text("\n".join(KEY_HELP), no_wrap=True, overflow="crop", end=""))
+        elif matches.display:
             rows = []
             for entry, highlighted in p.shown(PALETTE_ROWS):
                 shortcut = f"   {entry.shortcut}" if entry.shortcut else ""

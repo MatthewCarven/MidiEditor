@@ -345,10 +345,14 @@ one layer up: **only what you actually changed changes.**
   - [ ] New / Open in the terminal (Save and Save as are there; `seq tui` opens one file)
   - [ ] an editable lane in the terminal — painted only; Ctrl+Up/Down moves velocity
   - [ ] a MIDI output chooser in the terminal (`--midi-out` only; the window has a combo)
-  - [ ] velocity by one has no key in the terminal: Ctrl+Shift+Up/Down is the scale
-    degree there; the palette's Set velocity takes `+1`
-  - [ ] check what Windows Terminal delivers for Shift+Enter and Shift+Space — S and
-    Shift+P are the spellings that don't need them
+  - [ ] velocity by one has no key in the terminal; the palette's Set velocity takes `+1`
+  - [x] Windows Terminal cannot tell Shift+Enter from Enter or Shift+Space from Space
+    (Matthew, 2026-10-19), sends Ctrl+Shift+S/Z as Ctrl+S/Z, and keeps Ctrl+V and
+    Ctrl+Shift+Up/Down for itself — so the terminal's keys are plain letters: S adds to
+    the set, Shift+P plays from the cursor, X / C / V / D the clipboard, `[` `]` a scale
+    degree, Ctrl+Y redo, Save as in the palette; `?` shows the table
+  - [ ] still unconfirmed in Windows Terminal: Ctrl+Up/Down (velocity) and Shift+Tab —
+    `:vel` and Tab round the tracks are the fallbacks if they don't arrive
   - [ ] a mouse in the terminal: Textual gives clicks for free, and `TextView._xs`
     already knows which column is under which character
 

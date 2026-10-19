@@ -2,30 +2,28 @@
 
 The window's mouse model (``ui_gui/editor.py``) at a cursor. What a click
 does there, Enter does here, and it depends only on what is under the
-cursor - no tool modes:
-
-    on a note                           on empty space
-  Enter             select + play     Enter        insert one cell + play
-  Shift+Enter or S  add to set        Del          -
-  Del               delete
+cursor - no tool modes. The whole table is ``KEY_HELP`` below, which ``?``
+shows in the terminal and the README quotes.
 
 Everything that acts on notes acts on **the selection, or else the note
 under the cursor**: Del, the transposes and nudges, Q, the velocity
 nudges, ``+`` and ``-``, and every registry command the ``:`` palette
 runs. So a single note never needs selecting first, and a selection
-(Enter on notes, Shift+Enter to add, Ctrl+A for the track) makes the same
-keys act on many. Esc deselects, or stops the transport if it is rolling.
+(Enter on notes, S to add, Ctrl+A for the track) makes the same keys act
+on many. Esc deselects, or stops the transport if it is rolling.
 
 The arrows always move the cursor - a keyboard UI has nothing else to move
-it with - so the window's selection-moving arrows wear Shift here:
-Shift+Up/Down transposes a semitone, Shift+Left/Right nudges a cell,
-Ctrl+Shift+Up/Down moves a scale degree, Ctrl+Up/Down nudges velocity by
-five. The cursor follows a note it was on when the note moves. Space plays
-from the playhead, Shift+Space (or Shift+P) from the cursor, P puts the
-playhead at the cursor. The plain-letter spellings exist because some
-terminals send Shift+Enter and Shift+Space as Enter and Space. ``.`` and ``,`` zoom, Tab cycles tracks, Ctrl+Z/Y undo and redo,
-``:`` opens the palette, Ctrl+S saves, Ctrl+Q quits (twice, with unsaved
-changes).
+it with - so the window's selection-moving arrows wear Shift here, and
+the cursor follows a note it was on when the note moves.
+
+**A chord the terminal can't deliver gets a plain spelling.** Windows
+Terminal sends Shift+Enter as Enter and Shift+Space as Space (Matthew,
+2026-10-19), Ctrl+Shift+S as Ctrl+S and Ctrl+Shift+Z as Ctrl+Z, and keeps
+Ctrl+V and Ctrl+Shift+Up/Down for its own paste and scrolling. So S adds
+to the set, Shift+P plays from the cursor, X / C / V / D are the
+clipboard, ``[`` and ``]`` move a scale degree, Ctrl+Y is redo, and Save
+as lives in the palette. The chords still work as aliases where a
+terminal does deliver them.
 
 Every edit is a command object run through ``History``; audition goes
 through ``Transport.audition`` so its guards apply - the toggle, and never
@@ -48,7 +46,29 @@ from ..ui_gui.editor import parse_key, velocity_change
 from .palette import Palette, prompts_for, tui_entries
 from .view import TextView
 
-VELOCITY_STEP = 5                # Ctrl+Up/Down; Ctrl+Shift+Up/Down is a scale degree here
+VELOCITY_STEP = 5                # Ctrl+Up/Down
+
+#: What ``?`` shows. Plain letters where the window has a chord, because a
+#: terminal only promises to deliver characters: see the module docstring.
+KEY_HELP = [
+    "    on a note                          on empty space",
+    "  Enter   select + play                Enter   insert one cell + play",
+    "  S       add to / drop from the set",
+    "  Del     delete",
+    "",
+    "arrows            cursor a cell / a pitch      Shift+Left/Right  nudge a cell",
+    "Ctrl+Left/Right   cursor a bar                 Shift+Up/Down     transpose a semitone",
+    "PageUp/PageDown   cursor an octave             [ / ]             down / up a scale degree",
+    "Home / End        bar 1 (and rewind) / last    Ctrl+Up/Down      velocity by five",
+    "Tab / Shift+Tab   next / previous track        + / -             a cell longer / shorter",
+    ". / ,             finer / coarser grid         Q                 quantise to the grid",
+    "G / F             ghosts on/off / fit pitches  Ctrl+A / Esc      select the track / deselect",
+    "Space             play / stop                  Ctrl+Z / Ctrl+Y   undo / redo",
+    "Shift+P           play from the cursor         X / C / V / D     cut, copy, paste at the cursor, duplicate",
+    "P                 playhead to the cursor       Ctrl+S            save",
+    "A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)",
+    ":                 the command palette          ?                 this table",
+]
 
 _MODIFIER_ORDER = {"ctrl": 0, "alt": 1, "shift": 2}
 
@@ -128,6 +148,7 @@ class Editor:
         self.message = ""
         self.quit_armed = False
         self.want_quit = False
+        self.help_open = False
         self._playhead_shown: int | None = None
         self._follow_anchor: int | None = None    # first_cell as _follow() last left it
         self.history.on_change.append(self._after_history)
@@ -283,18 +304,24 @@ class Editor:
         name = normalise_key(name, character)
         if self.palette.is_open:
             return self._palette_key(name, character)
+        if self.help_open:                          # any key puts the table away
+            self.help_open = False
+            return True
         if name != "ctrl+q":
             self.quit_armed = False
         g = self.grid
 
-        # -- the palette, files, quitting
+        # -- the palette, the key table, files, quitting
         if name in ("colon", "ctrl+p"):
             self.palette.open()
+            return True
+        if name == "question_mark":
+            self.help_open = True
             return True
         if name == "ctrl+s":
             self.save()
             return True
-        if name == "ctrl+shift+s":
+        if name == "ctrl+shift+s":                  # arrives as Ctrl+S in Windows Terminal
             self.open_prompt("file.save_as")
             return True
         if name == "ctrl+q":
@@ -312,7 +339,7 @@ class Editor:
         if name == "space":
             self.toggle_play()
             return True
-        if name in ("shift+space", "shift+p"):      # some terminals send Shift+Space as Space
+        if name in ("shift+p", "shift+space"):      # Windows Terminal sends Shift+Space as Space
             self.play_from_cursor()
             return True
         if name == "p":
@@ -326,28 +353,28 @@ class Editor:
         if name == "enter":
             self.enter()
             return True
-        if name in ("shift+enter", "s"):            # some terminals send Shift+Enter as Enter
+        if name in ("s", "shift+enter"):            # Windows Terminal sends Shift+Enter as Enter
             self.add_cursor_note()
             return True
         if name in ("delete", "backspace"):
             self.delete()
             return True
-        if name in ("ctrl+z", "ctrl+y", "ctrl+shift+z"):
+        if name in ("ctrl+z", "ctrl+y", "ctrl+shift+z"):   # Ctrl+Shift+Z arrives as Ctrl+Z there
             self.undo() if name == "ctrl+z" else self.redo()
             return True
         if name == "ctrl+a":
             self.select_all()
             return True
-        if name == "ctrl+x":
+        if name in ("x", "ctrl+x"):
             self.cut()
             return True
-        if name == "ctrl+c":
+        if name in ("c", "ctrl+c"):
             self.copy()
             return True
-        if name == "ctrl+v":
+        if name in ("v", "ctrl+v"):                 # Windows Terminal keeps Ctrl+V for its own paste
             self.paste()
             return True
-        if name == "ctrl+d":
+        if name in ("d", "ctrl+d"):
             self.duplicate()
             return True
         if name == "q":
@@ -356,8 +383,9 @@ class Editor:
         if name in ("shift+up", "shift+down"):
             self.transpose(1 if name == "shift+up" else -1)
             return True
-        if name in ("ctrl+shift+up", "ctrl+shift+down"):
-            self.transpose_diatonic(1 if name == "ctrl+shift+up" else -1)
+        if name in ("right_square_bracket", "left_square_bracket",
+                    "ctrl+shift+up", "ctrl+shift+down"):   # the chords scroll Windows Terminal
+            self.transpose_diatonic(1 if name in ("right_square_bracket", "ctrl+shift+up") else -1)
             return True
         if name in ("shift+left", "shift+right"):
             self.nudge(1 if name == "shift+right" else -1)
@@ -667,6 +695,9 @@ class Editor:
         if key == "app.quit":
             self.request_quit()
             return self.message
+        if key == "app.help":
+            self.help_open = True
+            return self.message
         if key == "edit.undo":
             return self.undo()
         if key == "edit.redo":
@@ -738,4 +769,4 @@ class Editor:
         return f"midiseq - {name}{'*' if self.dirty_since_save else ''}"
 
 
-__all__ = ["Editor", "build_command", "normalise_key", "VELOCITY_STEP"]
+__all__ = ["Editor", "build_command", "normalise_key", "KEY_HELP", "VELOCITY_STEP"]

@@ -22,11 +22,12 @@ Fields = list[tuple[str, str, str]]
 #: The terminal's own entries, after the window's.
 TUI_ACTIONS = [
     ("file.save", "Save", "Ctrl+S"),
-    ("file.save_as", "Save as…", "Ctrl+Shift+S"),
+    ("file.save_as", "Save as…", None),
     ("view.goto_bar", "Go to bar…", None),
     ("view.track", "Track…", "Tab"),
     ("transport.play", "Play / Stop", "Space"),
     ("transport.rewind", "Rewind", "Home"),
+    ("app.help", "Keys", "?"),
     ("app.quit", "Quit", "Ctrl+Q"),
 ]
 

@@ -210,46 +210,54 @@ bar:beat.subdivision, length, velocity. Colour is shading on top of that,
 so the picture still reads without it.
 
 It is the window's mouse model at a cursor. What a click does there, Enter
-does here, and it depends only on what is under the cursor — no tool modes:
+does here, and it depends only on what is under the cursor — no tool modes.
+`?` shows this table in the terminal:
 
 ```
-    on a note                           on empty space
-  Enter             select + play     Enter        insert one cell + play
-  Shift+Enter or S  add to set
-  Del               delete
+    on a note                          on empty space
+  Enter   select + play                Enter   insert one cell + play
+  S       add to / drop from the set
+  Del     delete
+
+arrows            cursor a cell / a pitch      Shift+Left/Right  nudge a cell
+Ctrl+Left/Right   cursor a bar                 Shift+Up/Down     transpose a semitone
+PageUp/PageDown   cursor an octave             [ / ]             down / up a scale degree
+Home / End        bar 1 (and rewind) / last    Ctrl+Up/Down      velocity by five
+Tab / Shift+Tab   next / previous track        + / -             a cell longer / shorter
+. / ,             finer / coarser grid         Q                 quantise to the grid
+G / F             ghosts on/off / fit pitches  Ctrl+A / Esc      select the track / deselect
+Space             play / stop                  Ctrl+Z / Ctrl+Y   undo / redo
+Shift+P           play from the cursor         X / C / V / D     cut, copy, paste at the cursor, duplicate
+P                 playhead to the cursor       Ctrl+S            save
+A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)
+:                 the command palette          ?                 this table
 ```
 
 Everything that acts on notes acts on **the selection, or else the note
-under the cursor**, so a single note never needs selecting first:
-
-```
-arrows                  cursor a cell / a pitch     Shift+Left/Right     nudge a cell
-Ctrl+Left/Right         cursor a bar                Shift+Up/Down        transpose a semitone
-PageUp/PageDown         cursor an octave            Ctrl+Shift+Up/Down   a scale degree
-Home / End              bar 1 (and rewind) / last   Ctrl+Up/Down         velocity by five
-Tab / Shift+Tab         next / previous track       + / -                a cell longer / shorter
-. / ,                   finer / coarser grid        Q                    quantise to the grid
-G / F                   ghosts on/off / fit pitches Del                  delete
-Space                   play / stop                 Ctrl+A / Esc         select the track / deselect
-Shift+Space or Shift+P  play from the cursor        Ctrl+Z / Ctrl+Y      undo / redo
-P                       playhead to the cursor      Ctrl+X / C / V / D   cut, copy, paste, duplicate
-A                       audition on/off             :  (or Ctrl+P)       the command palette
-Ctrl+S / Ctrl+Shift+S   save / save as              Ctrl+Q               quit (twice, with unsaved changes)
-```
-
-The arrows always move the cursor — a keyboard has nothing else to move it
+under the cursor**, so a single note never needs selecting first. The
+arrows always move the cursor — a keyboard has nothing else to move it
 with — so the window's selection-moving arrows wear Shift here, and the
 cursor follows a note it was on when the note moves: Shift+Up three times
 carries one note up a minor third. The view follows the cursor by the bar:
 walk off the right edge and the page turns to the cursor's bar. Paste lands
 at the cursor, the one position a keyboard always has.
 
+The letters are plain keys on purpose. A terminal only promises to deliver
+characters: Windows Terminal cannot tell Shift+Enter from Enter or
+Shift+Space from Space, sends Ctrl+Shift+S as Ctrl+S and Ctrl+Shift+Z as
+Ctrl+Z, and keeps Ctrl+V and Ctrl+Shift+Up/Down for its own paste and
+scrolling — so the chords the window uses for those are not the way in
+here. S adds to the set, Shift+P plays from the cursor, X / C / V / D are
+the clipboard, `[` and `]` move a scale degree, Ctrl+Y is redo, and Save as
+is in the palette. Where a terminal does deliver the chords, they still
+work.
+
 `:` opens the palette: type `inv`, get Invert; Enter runs the highlighted
 match, Up and Down pick another, Esc closes. It is the window's palette —
 the same registry, the same entries, the same questions, asked one at a
 time on the same line (`Invert - Axis note, e.g. G4 (blank: the midpoint):`),
 blank taking the default — plus the terminal's own: Save, Save as, Go to
-bar, Track, Play / Stop, Rewind, Quit.
+bar, Track, Play / Stop, Rewind, Keys, Quit.
 
 Space plays from the playhead through the same sink as the window, chosen
 the same way (`--midi-out NAME`, the GS Wavetable by default, else the first
@@ -385,7 +393,7 @@ midiseq/
 python -m pytest
 ```
 
-Four hundred and fifty-three tests, all on the design invariants rather than
+Four hundred and fifty-five tests, all on the design invariants rather than
 the plumbing, and none of them opens a window or a terminal.
 
 Step 6's tests judge the terminal as text: every line is the width and the
@@ -398,9 +406,10 @@ takes the cursor note without a selection and the selection with one,
 Shift+Up carries the cursor with the note, Q lands the off-grid F4 on the
 bar line, `-` stops at one cell, `:tsd` asks two questions and `abc` for a
 number comes back as a sentence, Ctrl+S writes a file that loads with the
-edit, Ctrl+Q needs two presses with unsaved changes. Five run the Textual
-app headless with its Pilot, for the wiring only: keys reach the editor, Tab
-changes track rather than focus, Ctrl+C copies rather than quitting.
+edit, Ctrl+Q needs two presses with unsaved changes, `?` shows the key table
+and any key puts it away. Six run the Textual app headless with its Pilot,
+for the wiring only: keys reach the editor, Tab changes track rather than
+focus, Ctrl+C copies rather than quitting.
 
 Step 4's tests drive the mouse model with coordinates: a click on empty
 inserts one cell and plays it, a drag draws the length out, Ctrl ignores snap

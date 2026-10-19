@@ -297,11 +297,19 @@ class Editor:
         self.widget.dirty = True
 
     def set_sink(self, sink: Sink) -> None:
-        """Swap where the sound goes. Stops first: the old sink owns whatever
-        is rolling, and the new one was never given the schedule."""
-        self.transport.stop()
+        """Swap where the sound goes. Whatever is rolling carries on from
+        where it is on the new sink: the old one is stopped first (it owns
+        its notes' releases), then the new one is given the schedule from
+        there. Switching to silent and back mid-song costs a lead, not the
+        song."""
+        t = self.transport
+        was_rolling = t.rolling
+        at = t.position()
+        t.stop()
         self.sink = sink
-        self.transport.sink = sink
+        t.sink = sink
+        if was_rolling:
+            t.play(at)
 
     def _prune_selection(self) -> None:
         if not self.selection:
@@ -737,8 +745,11 @@ class Editor:
             t.stop()
             return False
         if not t.play():
-            self.message = "Nothing to play from here - Home or |< for the start"
-            return False
+            self.rewind()               # nothing ahead: from the top, as |< would (Matthew's call, 2026-10-19)
+            if not t.play():
+                self.message = "Nothing to play"
+                return False
+            self.message = "From the top"
         return True
 
     def rewind(self) -> None:

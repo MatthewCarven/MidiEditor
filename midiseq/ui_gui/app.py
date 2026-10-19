@@ -566,9 +566,9 @@ class GridApp:
         self.editor.playhead_dirty = True
 
     def _choose_output(self, name: str) -> None:
-        """The output combo. Stops (``set_sink`` does), closes the old sink if
-        it can be closed, and hands the editor the new one; the song is
-        untouched."""
+        """The output combo. Whatever is rolling carries on, on the new sink
+        (``set_sink`` does that); the old sink is closed if it can be, and
+        the song is untouched."""
         if name == self.sink_note:
             self.flash(f"MIDI out: {name} already")
             return

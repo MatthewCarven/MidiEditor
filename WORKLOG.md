@@ -900,3 +900,14 @@ sounding there, chase, is a feature, now in the TODO).
 Method note: the notebook's heredoc rule bit again - a three-hundred-line
 quoted heredoc with no backslash in it failed to parse in the Bash tool. The
 patch went to the scratchpad as a file and ran from there, as the rule says.
+
+### Ears, round two
+
+2026-10-19, Matthew tried the four window changes: all work. Two calls from
+him, both done the same hour. Space with nothing ahead of the playhead now
+rewinds and plays ("do the |< for the user"), with "From the top" in the
+status line. And switching the MIDI output while rolling, which used to stop
+the transport (`set_sink` stopped first and never handed over the schedule),
+now carries on from the position on the new sink; silent and back costs a
+lead, not the song. The test that had pinned the old swap rule was rewritten
+to the new one. 377 tests.

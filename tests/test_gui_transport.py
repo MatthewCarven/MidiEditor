@@ -265,15 +265,15 @@ class TestEditingWhilePlaying:
         assert sink.log == []                                    # no audition over the song
         assert len(sink.started) == 1                            # the schedule is not rewritten
 
-    def test_swapping_the_sink_stops_the_old_one(self):
+    def test_swapping_the_sink_stops_the_old_one_and_carries_on_in_the_new(self):
         _, _, ed, old, _ = make()
         ed.transport.play(BAR9)
         new = NullSink(clock=FakeClock())
         ed.set_sink(new)
-        assert not old.rolling and not ed.transport.rolling
+        assert not old.rolling and ed.transport.rolling             # handed over, not dropped
         assert ed.sink is new and ed.transport.sink is new
-        ed.transport.play(BAR9)
-        assert new.rolling and len(old.started) == 1 and len(new.started) == 1
+        assert len(old.started) == 1 and len(new.started) == 1
+        assert new.schedule.start_tick == BAR9
 
 
 class TestReviewFindings:
@@ -315,9 +315,21 @@ class TestReviewFindings:
         ed.frame()
         assert w.first_cell > 0
 
-    def test_space_at_the_end_says_there_is_nothing_to_play(self):
-        _, _, ed, _, clock = make(bar=1)
+    def test_space_with_nothing_ahead_plays_from_the_top_as_rewind_would(self):
+        _, w, ed, _, clock = make(bar=9)
         ed.toggle_play()
         clock.advance(600.0)                                     # the whole song and then some
-        assert not ed.toggle_play()
-        assert "Nothing to play" in ed.message
+        assert ed.toggle_play()                                  # Matthew's call: do the |< for me
+        assert ed.transport.rolling and ed.transport.position() == 0
+        assert w.first_cell == 0 and "From the top" in ed.message
+
+    def test_switching_the_output_while_rolling_carries_on_from_where_it_was(self):
+        _, _, ed, old, clock = make(bar=1)
+        ed.toggle_play()
+        advance_to(ed, clock, BAR)
+        new = NullSink(clock=clock)
+        ed.set_sink(new)
+        assert ed.transport.sink is new and ed.transport.rolling
+        assert not old.rolling                                   # the old one let go of its notes
+        assert abs(new.schedule.start_tick - BAR) <= 1
+        assert abs(ed.transport.position() - BAR) <= TPC

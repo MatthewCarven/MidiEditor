@@ -322,8 +322,11 @@ one layer up: **only what you actually changed changes.**
       fixed with tests and three refuted on reading. Details in the worklog.
 - [ ] Open: a seek into held notes starts nothing until the next attack.
       "Chase" (restart the notes sounding at the seek point) would be the
-      feature. Space at the end says so rather than wrapping to bar 1;
-      wrap-around is a choice for Matthew.
+      feature.
+- [x] **Ears, round two (2026-10-19):** |<, scrolling away, Space at the end
+      and the port combo all passed. Matthew's two calls, both done: Space
+      with nothing ahead does the |< for you, and switching the output while
+      rolling carries on from where it was instead of stopping.
 
 ## Step 6 — TUI
 

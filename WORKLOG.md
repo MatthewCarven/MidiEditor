@@ -911,3 +911,6 @@ the transport (`set_sink` stopped first and never handed over the schedule),
 now carries on from the position on the new sink; silent and back costs a
 lead, not the song. The test that had pinned the old swap rule was rewritten
 to the new one. 377 tests.
+
+Confirmed by ear the same evening, Matthew: *"Working fine."* Both window
+changes stand.

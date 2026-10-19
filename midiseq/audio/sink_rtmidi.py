@@ -45,6 +45,7 @@ Message = tuple[int, ...]
 
 #: Seconds between "now" and the first event of anything scheduled.
 LEAD = 0.005
+IDLE_WAIT = 0.5     # the scheduler thread's longest nap with nothing queued
 
 
 def match_port(name: str, ports: list[str]) -> int | None:
@@ -155,10 +156,10 @@ class RtMidiSink:
             if self._closed:
                 return
             self._halt()
-            self._t0 = self._clock() + self.lead
-            self._heap.extend((self._t0 + e.seconds, self._seq + i, e.message)
-                              for i, e in enumerate(schedule.events))
-            heapq.heapify(self._heap)   # O(n), so a long song cannot eat its own lead
+            pending = [(e.seconds, self._seq + i, e.message) for i, e in enumerate(schedule.events)]
+            self._t0 = self._clock() + self.lead    # taken after the build: a long song must not eat its own lead
+            self._heap.extend((self._t0 + s, q, m) for s, q, m in pending)
+            heapq.heapify(self._heap)               # O(n)
             self._seq += len(schedule.events)
             self._rolling = bool(schedule.events)
             self._last_seq = self._seq - 1 if schedule.events else None
@@ -307,7 +308,9 @@ def _run(ref: "weakref.ref[RtMidiSink]", cv: threading.Condition) -> None:
                 sink._pump(sink._clock())
                 continue
             del sink
-            cv.wait(wait)
+            # Bounded even when idle: if that ``del`` was the last reference,
+            # ``__del__`` ran here and nobody is left to notify this thread.
+            cv.wait(IDLE_WAIT if wait is None else wait)
 
 
 __all__ = ["RtMidiSink", "match_port", "LEAD"]

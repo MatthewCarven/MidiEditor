@@ -845,3 +845,58 @@ list is in the workflow's output. Triage by hand next session.
 
 2026-10-19, Matthew: *"working perfectly I must say."* Step 5's test point,
 passed.
+
+### The review, triaged by hand
+
+2026-10-19. The twenty-three unvoted findings read against the code, no
+agents, on a low token budget. Twenty were real and are fixed, some sharing a
+fix, with a test each (376 tests now); three were refuted on reading.
+
+Fixed:
+
+- The prelude's stale set-up value went out *after* a set-up message the file
+  has at the start tick (both at second zero, stable sort, prelude appended
+  last). The prelude now goes in front.
+- A schedule of nothing but the prelude counted as something to play, so
+  `seq play -b` past the end "played" and Space at the end rolled for an
+  instant. Notes alone count now, and the CLI's "nothing to play" is
+  reachable.
+- Space after a run-out nobody observed replayed from the previous start.
+  `play()` takes its default from `position()`, which lands the playhead at
+  the end; the editor says "Nothing to play from here" instead.
+- `position()` read `rolling` and `elapsed()` under separate lock holds; a
+  run-out between the two gave the start tick, and `stop()` would have kept
+  it. It reads twice and clamps to the schedule's end.
+- A 0 us/beat tempo divided by zero in `tick_at` and `bpm`. Clamped to 1.
+- The scheduler thread could park forever: dropping the sink's last reference
+  from inside the thread runs `__del__` there, after its wait was computed as
+  None. The idle wait is bounded (0.5 s), so it re-checks the weakref.
+- `start()` took its lead before an O(n) build; the build comes first now.
+- `choose_port` took the first substring hit, so an exact name lost to an
+  earlier port containing it. Exact first.
+- With python-rtmidi missing, `open_sink` said "no MIDI output ports" and the
+  install hint was dead code. The import is probed first; the hint shows.
+- `seq check` reported the model's own same-tick tempo/meter dedupe as a
+  loss. `musical_content` keeps the last word per tick, as the model does;
+  four hand-made files went from 100% problems to 100% identical.
+- `|<` did not bring the view to bar 1 the way Home does, so while rolling
+  the playhead sat off-screen and `follow()` only pages forward.
+- `follow()` yanked back a view you had scrolled away from, and a drag held
+  across a page turn landed a page away. The editor follows only while the
+  view is where the follower left it or the playhead is in it, never
+  mid-drag.
+- In the window: re-selecting the current port silenced the app (the port was
+  opened a second time while still held; now a no-op), a port that failed to
+  open stayed selected in the combo (it shows silent), and New/Open turned
+  audition back on (the flag carries over).
+
+Refuted: the urgent release lost when `send_message` raises (a dead port
+cannot take it, and a retry would spin); the KeyboardInterrupt window between
+`open_sink` and the CLI's `try` (microseconds, and `__del__` closes the
+port); seeking while rolling into held notes "stopping" the transport
+(nothing starts after the seek point - a seek that restarts the notes
+sounding there, chase, is a feature, now in the TODO).
+
+Method note: the notebook's heredoc rule bit again - a three-hundred-line
+quoted heredoc with no backslash in it failed to parse in the Bash tool. The
+patch went to the scratchpad as a file and ran from there, as the rule says.

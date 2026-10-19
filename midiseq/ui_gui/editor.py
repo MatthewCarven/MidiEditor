@@ -276,6 +276,7 @@ class Editor:
         self.preview_dirty = False
         self.playhead_dirty = True
         self._playhead_shown: int | None = None
+        self._follow_anchor: int | None = None    # first_cell as _follow() last left it
         self.history.on_change.append(self._after_history)
 
     # -- state ------------------------------------------------------------------
@@ -390,6 +391,7 @@ class Editor:
         """Put the playhead at ``tick``; if rolling, carry on from there."""
         tick = max(0, tick)
         t = self.transport
+        self._arm_follow()
         if t.rolling:
             t.play(tick)
         else:
@@ -404,11 +406,28 @@ class Editor:
         t = self.transport
         tick = t.position()
         if t.rolling:
-            self.widget.follow(tick)
+            self._follow(tick)
         if tick != self._playhead_shown:
             self._playhead_shown = tick
             self.playhead_dirty = True
         return tick
+
+    def _follow(self, tick: int) -> None:
+        """Turn the page for a rolling playhead - unless you scrolled away
+        from it: a view moved by hand while rolling is yours until the
+        playhead is back in it. Not during a drag either, or the drag's cells
+        would shift under the pointer."""
+        w = self.widget
+        if w.first_cell != self._follow_anchor and not w.tick_visible(tick):
+            return
+        if self.gesture is None:
+            w.follow(tick)
+        self._follow_anchor = w.first_cell
+
+    def _arm_follow(self) -> None:
+        """Play, seek and rewind: wherever the view is now is where you want
+        the playhead followed from."""
+        self._follow_anchor = self.widget.first_cell
 
     def playhead_items(self) -> list[Primitive]:
         self.playhead_dirty = False
@@ -631,7 +650,7 @@ class Editor:
             if shift:
                 self.play_from_left_edge()
             else:
-                self.transport.toggle()
+                self.toggle_play()
             self.playhead_dirty = True
             return True
         if name == "home":
@@ -706,10 +725,25 @@ class Editor:
     def play_from_left_edge(self) -> bool:
         """Shift+Space: play what you are looking at."""
         w = self.widget
+        self._arm_follow()
         return self.transport.play(w.view.cell_to_tick(w.first_cell))
 
+    def toggle_play(self) -> bool:
+        """Space and the Play button. Returns whether the transport rolls
+        afterwards, and says so when there was nothing to play from here."""
+        t = self.transport
+        self._arm_follow()
+        if t.rolling:
+            t.stop()
+            return False
+        if not t.play():
+            self.message = "Nothing to play from here - Home or |< for the start"
+            return False
+        return True
+
     def rewind(self) -> None:
-        """The |< button: bar 1, rolling or not."""
+        """The |< button: bar 1, rolling or not, and the view goes with it."""
+        self.widget.go_to_bar(1)
         self.seek(0)
 
     def transpose(self, semitones: int) -> None:

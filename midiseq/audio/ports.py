@@ -26,7 +26,7 @@ def list_ports() -> list[str]:
 
 
 def choose_port(name: str | None, ports: list[str], preferred=PREFERRED) -> str | None:
-    """``name`` as a case-insensitive substring match; else the first port
+    """``name`` exactly (case-insensitive), else as a substring; else the first port
     matching a preference; else the first port; None when ``name`` was given
     and matches nothing - a wrong name should not quietly become some other
     device."""
@@ -34,6 +34,9 @@ def choose_port(name: str | None, ports: list[str], preferred=PREFERRED) -> str 
         return None
     if name:
         wanted = name.lower()
+        for p in ports:
+            if wanted == p.lower():     # the exact name first: the combo hands these over
+                return p
         for p in ports:
             if wanted in p.lower():
                 return p
@@ -45,9 +48,21 @@ def choose_port(name: str | None, ports: list[str], preferred=PREFERRED) -> str 
     return ports[0]
 
 
+def _rtmidi_missing() -> str | None:
+    """The ImportError's text when python-rtmidi is not installed, else None."""
+    try:
+        import rtmidi  # noqa: F401
+    except ImportError as exc:
+        return str(exc)
+    return None
+
+
 def open_sink(name: str | None = None) -> tuple[Sink, str]:
     """A sink and a one-line description of it: the rtmidi sink on the chosen
     port, or the null sink and the reason."""
+    missing = _rtmidi_missing()
+    if missing is not None:
+        return NullSink(keep_log=False), f'no python-rtmidi ({missing}); silent - pip install -e ".[audio]"'
     ports = list_ports()
     if not ports:
         return NullSink(keep_log=False), "no MIDI output ports (silent)"
@@ -55,11 +70,7 @@ def open_sink(name: str | None = None) -> tuple[Sink, str]:
     if chosen is None:
         return NullSink(keep_log=False), (f"no MIDI output matching {name!r} (silent); "
                                           f"available: {', '.join(ports)}")
-    try:
-        from .sink_rtmidi import RtMidiSink
-    except ImportError as exc:
-        return NullSink(keep_log=False), (f"no rtmidi sink ({exc}); silent - "
-                                          f"pip install -e \".[audio]\"")
+    from .sink_rtmidi import RtMidiSink
     try:
         return RtMidiSink(chosen), chosen
     except Exception as exc:  # noqa: BLE001 - the host MIDI stack

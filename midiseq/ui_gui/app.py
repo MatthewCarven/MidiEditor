@@ -366,7 +366,9 @@ class GridApp:
                             middle_c_octave=old.middle_c_octave, layout=old.layout)
         widget.resize(old.width, old.height)
         self.song, self.path, self.widget = song, path, widget
+        audition = self.editor.transport.audition_enabled     # your choice outlives the song
         self.editor = Editor(widget, self.sink)
+        self.editor.transport.audition_enabled = audition
         self._sync_audition_check()
         self._rebuild_track_menu()
         self._update_title()
@@ -560,23 +562,29 @@ class GridApp:
                 dpg.set_value(tag, on)
 
     def _toggle_play(self) -> None:
-        self.editor.transport.toggle()
+        self.editor.toggle_play()
         self.editor.playhead_dirty = True
 
     def _choose_output(self, name: str) -> None:
         """The output combo. Stops (``set_sink`` does), closes the old sink if
         it can be closed, and hands the editor the new one; the song is
         untouched."""
+        if name == self.sink_note:
+            self.flash(f"MIDI out: {name} already")
+            return
         old = self.sink
+        self.editor.set_sink(NullSink(keep_log=False))   # stops; the old port must be let go before it can be reopened
+        close = getattr(old, "close", None)
+        if callable(close):
+            close()
         if name == SILENT:
             sink, note = NullSink(keep_log=False), SILENT
         else:
             sink, note = open_sink(name)
+            if isinstance(sink, NullSink) and dpg.does_item_exist(OUTPUT_COMBO):
+                dpg.set_value(OUTPUT_COMBO, SILENT)       # the combo shows what you actually got
         self.sink, self.sink_note = sink, note
         self.editor.set_sink(sink)
-        close = getattr(old, "close", None)
-        if callable(close) and old is not sink:
-            close()
         self.flash(f"MIDI out: {note}")
 
     def _local_mouse(self) -> tuple[float, float]:

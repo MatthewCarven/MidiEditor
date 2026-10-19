@@ -166,12 +166,16 @@ A transport bar sits between the menu and the grid: **Play / Stop** (Space),
 **|<** rewind, the position as bar:beat.sub, the tempo at the playhead, the
 **Audition** toggle (also A, also in the Edit menu — one flag, three doors),
 and the **MIDI output** to use. Click the ruler to put the playhead there;
-Shift+Space plays from the left edge of the view; Home sends the playhead to
-bar 1. While rolling the playhead is a white line and the view turns the page
-when it passes the right edge.
+Shift+Space plays from the left edge of the view; Home and **|<** send the
+playhead to bar 1 and the view with it. While rolling the playhead is a white
+line and the view turns the page when it passes the right edge - unless you
+have scrolled away from it, in which case the view is yours until the
+playhead is back in it; never mid-drag. Space at the end of the song says so
+rather than replaying it: |< or Home to go back.
 
 Sound comes from a MIDI output, not from midiseq. `seq gui --midi-out NAME`
-picks one by substring; with nothing asked for, the Microsoft GS Wavetable is
+picks one by name, exact first, else substring; with nothing asked for, the
+Microsoft GS Wavetable is
 used when it exists, else the first port, else the app runs silent and the
 status line says why. The sink is python-rtmidi (`pip install -e ".[audio]"`),
 one scheduler thread with absolute due times; on this machine a note goes out
@@ -310,7 +314,7 @@ midiseq/
 python -m pytest
 ```
 
-Two hundred and twenty-two tests, all on the design invariants rather than the
+Three hundred and seventy-six tests, all on the design invariants rather than the
 plumbing, and none of them opens a window.
 
 Step 4's tests drive the mouse model with coordinates: a click on empty

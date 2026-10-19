@@ -274,3 +274,50 @@ class TestEditingWhilePlaying:
         assert ed.sink is new and ed.transport.sink is new
         ed.transport.play(BAR9)
         assert new.rolling and len(old.started) == 1 and len(new.started) == 1
+
+
+class TestReviewFindings:
+    """The hand triage of the step-5 review (2026-10-19)."""
+
+    def test_rewind_brings_the_view_to_bar_1_like_home(self):
+        _, w, ed, _, _ = make(bar=9)
+        ed.rewind()
+        assert w.first_cell == 0 and ed.transport.position() == 0
+
+    def test_a_view_scrolled_away_while_rolling_is_yours_until_the_playhead_returns(self):
+        _, w, ed, _, clock = make(bar=1)
+        w.resize(400, 760)                                       # short pages: the song outlasts the test
+        ed.toggle_play()
+        right_edge = w.tick_at_col(w.first_cell + w.visible_cols)
+        advance_to(ed, clock, right_edge + TPC)
+        ed.frame()
+        assert w.first_cell > 0                                  # the page turned
+        w.go_to_bar(1)                                           # you scrolled back to look at something
+        advance_to(ed, clock, right_edge + BAR)
+        ed.frame()
+        assert w.first_cell == 0                                 # and it stays where you put it
+        w.go_to_bar(w.view.bars.bar_containing(ed.transport.position()).number)
+        ed.frame()
+        page = w.first_cell
+        advance_to(ed, clock, w.tick_at_col(page + w.visible_cols) + TPC)
+        ed.frame()
+        assert w.first_cell > page                               # back in view: following resumes
+
+    def test_a_drag_holds_the_page_still(self):
+        _, w, ed, _, clock = make(bar=1)
+        ed.toggle_play()
+        ed.press(*centre(w, 3, 2), LEFT)
+        right_edge = w.tick_at_col(w.first_cell + w.visible_cols)
+        advance_to(ed, clock, right_edge + TPC)
+        ed.frame()
+        assert w.first_cell == 0                                 # mid-drag: the cells hold still
+        ed.release(*centre(w, 3, 2), LEFT)
+        ed.frame()
+        assert w.first_cell > 0
+
+    def test_space_at_the_end_says_there_is_nothing_to_play(self):
+        _, _, ed, _, clock = make(bar=1)
+        ed.toggle_play()
+        clock.advance(600.0)                                     # the whole song and then some
+        assert not ed.toggle_play()
+        assert "Nothing to play" in ed.message

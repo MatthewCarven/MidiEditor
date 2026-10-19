@@ -193,7 +193,7 @@ class TempoChange:
 
     @property
     def bpm(self) -> float:
-        return 60_000_000.0 / self.us_per_beat
+        return 60_000_000.0 / max(1, self.us_per_beat)    # 0 is a corrupt file, not a crash
 
 
 @dataclass(frozen=True)

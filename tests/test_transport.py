@@ -243,3 +243,58 @@ class TestPorts:
         sink, why = open_sink("no such port, surely")
         assert isinstance(sink, NullSink)
         assert "no MIDI output" in why
+
+
+class TestReviewFindings:
+    """The hand triage of the step-5 review (2026-10-19)."""
+
+    def test_the_files_own_set_up_at_the_start_tick_beats_the_prelude(self):
+        song = Song(ppq=PPQ)
+        t = Track(name="t", channel=0)
+        t.passthrough.append(OpaqueEvent(0, mido.Message("program_change", channel=0, program=1), 0))
+        t.passthrough.append(OpaqueEvent(BEAT, mido.Message("program_change", channel=0, program=2), 1))
+        t.notes.append(song.make_note(60, BEAT, BEAT, 100))
+        song.tracks.append(t)
+        programs = [e.message[1] for e in schedule(song, BEAT).events if e.message[0] == 0xC0]
+        assert programs == [1, 2]                                   # the stale one first, the file's own last
+
+    def test_set_up_alone_is_nothing_to_play(self):
+        s = schedule(two_track_song(), 8 * BEAT)                    # past every note: only the prelude
+        assert s.is_empty and s.end_tick == 8 * BEAT
+
+    def test_play_after_an_unobserved_run_out_starts_from_the_end_not_the_start(self):
+        clock = FakeClock()
+        t = Transport(two_track_song(), NullSink(clock=clock))
+        t.play(0)
+        clock.advance(10.0)                                         # ran out, nobody looked
+        assert t.play() is False                                    # from the end: nothing, not a replay
+        assert t.playhead == 4 * BEAT
+
+    def test_a_run_out_between_the_two_reads_in_position_lands_at_the_end(self):
+        class RunsOutUnderneath(NullSink):
+            def elapsed(self):
+                self.set_rolling(False)                             # the sink's thread got there first
+                return 0.0
+        sink = RunsOutUnderneath(clock=FakeClock())
+        t = Transport(two_track_song(), sink)
+        t.play(0)
+        sink.set_rolling(True)
+        assert t.position() == 4 * BEAT
+
+    def test_a_zero_tempo_is_a_corrupt_file_not_a_crash(self):
+        song = Song(ppq=PPQ)
+        song.tempo_map = [TempoChange(0, 0)]
+        assert TempoClock(song).tick_at(1.0) >= 0
+        assert TempoChange(0, 0).bpm > 0
+
+    def test_choose_port_takes_an_exact_name_over_an_earlier_substring_hit(self):
+        assert choose_port("B", ["AB", "B"]) == "B"
+        assert choose_port("b", ["AB", "B"]) == "B"
+        assert choose_port("A", ["AB", "B"]) == "AB"                 # a substring still does when nothing is exact
+
+    def test_without_python_rtmidi_open_sink_says_so_and_how_to_fix_it(self, monkeypatch):
+        from midiseq.audio import ports
+        monkeypatch.setattr(ports, "_rtmidi_missing", lambda: "No module named rtmidi")
+        sink, why = ports.open_sink()
+        assert isinstance(sink, NullSink)
+        assert "rtmidi" in why and "pip install" in why

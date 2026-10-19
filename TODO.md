@@ -317,12 +317,13 @@ one layer up: **only what you actually changed changes.**
 - [ ] Open: no loop / cycle range, no metronome, no record from a MIDI input
 - [x] **Test — Matthew's ears, 2026-10-19: "working perfectly".** Sound,
       latency and audition all passed in one go.
-- [ ] **Review, unfinished:** one confirmed finding (the sink keeps sounding
-      notes as a set, so two overlapping notes on one pitch and channel leave
-      the second unreleased by Stop — inaudible on the GS synth; a `Counter`
-      fixes it) and twenty-three findings that never got their verification
-      votes when the usage limit hit (list in the 2026-10-18/19 worklog entry
-      and the workflow output). Triage by hand before step 6.
+- [x] **Review, triaged by hand (2026-10-19):** the confirmed finding fixed
+      (`_sounding` is a `Counter`), and of the twenty-three unvoted, twenty
+      fixed with tests and three refuted on reading. Details in the worklog.
+- [ ] Open: a seek into held notes starts nothing until the next attack.
+      "Chase" (restart the notes sounding at the seek point) would be the
+      feature. Space at the end says so rather than wrapping to bar 1;
+      wrap-around is a choice for Matthew.
 
 ## Step 6 — TUI
 

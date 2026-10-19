@@ -350,7 +350,9 @@ def musical_content(path: str | Path) -> dict:
                 continue
             if msg.type in _SONG_LEVEL:
                 # A list, not a set: a tempo restated at a section boundary is a
-                # real event, and collapsing repeats would hide losing one.
+                # real event, and collapsing repeats would hide losing one. Two
+                # on the *same* tick collapse to the last, as the model keeps
+                # them (``model._dedupe``): the first never took effect.
                 meta.append((tick, msg.type, _meta_value(msg)))
             elif msg.type in _MODELLED:
                 key = (msg.channel, msg.note)
@@ -362,13 +364,16 @@ def musical_content(path: str | Path) -> dict:
                                   msg.velocity))
             else:
                 others.append((tick, msg.type, str(msg.bytes())))
+    last_word: dict[tuple[int, str], tuple] = {}
+    for item in meta:
+        last_word[item[:2]] = item
     return {
         "ppq": mid.ticks_per_beat,
         "format": mid.type,
         "tracks": len(mid.tracks),
         "notes": sorted(notes),
         "other": sorted(others),
-        "meta": sorted(meta),
+        "meta": sorted(last_word.values()),
     }
 
 

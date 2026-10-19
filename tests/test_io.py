@@ -988,3 +988,23 @@ def test_the_report_surveys_what_is_in_the_library(tmp_path):
     assert "7/8" in survey["meters"]
     assert "control_change" in survey["event_types"]
     assert "96" in survey["ppq"] or 96 in survey["ppq"]
+
+
+def test_musical_content_keeps_the_last_of_two_same_tick_meta_events(tmp_path):
+    """The model keeps the last tempo (or meter) stated on a tick, so the
+    check must not count the first as lost: it never took effect."""
+    import mido
+    from midiseq.core.io_midi import musical_content
+    mid = mido.MidiFile(ticks_per_beat=480)
+    track = mido.MidiTrack()
+    mid.tracks.append(track)
+    track.append(mido.MetaMessage("set_tempo", tempo=500_000, time=0))
+    track.append(mido.MetaMessage("set_tempo", tempo=400_000, time=0))
+    track.append(mido.MetaMessage("set_tempo", tempo=300_000, time=960))      # a later one is kept
+    track.append(mido.Message("note_on", note=60, velocity=90, time=0))
+    track.append(mido.Message("note_off", note=60, velocity=0, time=480))
+    path = tmp_path / "twice.mid"
+    mid.save(str(path))
+    meta = musical_content(path)["meta"]
+    assert [m[0] for m in meta] == [0, 960]
+    assert "400000" in repr(meta[0]) and "500000" not in repr(meta)

@@ -209,7 +209,7 @@ class TempoClock:
                 out[-1] = (c.tick, c.us_per_beat)   # a restated tempo: the last word wins
             else:
                 out.append((c.tick, c.us_per_beat))
-        return out
+        return [(tick, max(1, us)) for tick, us in out]    # 0 us/beat is a corrupt file, not a crash
 
     def seconds_at(self, tick: int) -> float:
         ppq = self.song.ppq
@@ -312,9 +312,14 @@ def schedule(song: Song, start_tick: int = 0, end_tick: int | None = None) -> Sc
                                          (NOTE_OFF | ch, n.pitch & 0x7F, n.off_velocity & 0x7F),
                                          off_tick, ORDER_OFF if n.duration > 0 else ORDER_OFF_AFTER_ON))
 
-    for tick, order, raw in sorted(setup.values()):
-        events.append(ScheduledEvent(0.0, raw, start_tick, ORDER_OTHER))
+    if not any(e.order == ORDER_ON for e in events):
+        return Schedule([], start_tick, start_tick, 0.0)    # set-up alone is nothing to play
 
+    # The prelude goes in front: a set-up message the file has *at* the start
+    # tick must have the last word over the stale value folded from before it,
+    # and the sort is stable.
+    prelude = [ScheduledEvent(0.0, raw, start_tick, ORDER_OTHER) for _, _, raw in sorted(setup.values())]
+    events = prelude + events
     events.sort(key=ScheduledEvent.sort_key)
     end = max((e.tick for e in events), default=start_tick)
     length = max((e.seconds for e in events), default=0.0)
@@ -371,11 +376,12 @@ class Transport:
         return self.sink.rolling
 
     def play(self, from_tick: int | None = None) -> bool:
-        """Roll from ``from_tick`` (default: the playhead). Returns whether
-        there was anything to play."""
+        """Roll from ``from_tick`` (default: the playhead, which a schedule
+        that ran out leaves at its end). Returns whether there was anything
+        to play."""
         if self.rolling:
             self.stop()
-        start = self.playhead if from_tick is None else max(0, from_tick)
+        start = self.position() if from_tick is None else max(0, from_tick)
         self.playhead = start
         sched = schedule(self.song, start)
         if sched.is_empty:
@@ -405,7 +411,10 @@ class Transport:
         """The playhead's tick: live while rolling, where it stopped otherwise.
         A schedule that ran out leaves the playhead at its end."""
         if self.rolling:
-            return self.tick_at(self.seconds_at(self._start_tick) + self.sink.elapsed())
+            elapsed = self.sink.elapsed()
+            if self.rolling:    # read again: a run-out between the two reads leaves elapsed() at zero
+                tick = self.tick_at(self.seconds_at(self._start_tick) + elapsed)
+                return tick if self._schedule is None else min(tick, self._schedule.end_tick)
         if self._schedule is not None:
             self.playhead = self._schedule.end_tick
             self._schedule = None

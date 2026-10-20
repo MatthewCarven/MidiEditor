@@ -263,7 +263,7 @@ class TestEditingWhilePlaying:
         assert ed.history.depth == 1
         assert ed.transport.rolling
         assert sink.log == []                                    # no audition over the song
-        assert len(sink.started) == 1                            # the schedule is not rewritten
+        assert len(sink.started) == 2                            # rewritten from the position: the new note is in it
 
     def test_swapping_the_sink_stops_the_old_one_and_carries_on_in_the_new(self):
         _, _, ed, old, _ = make()

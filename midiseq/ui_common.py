@@ -244,3 +244,20 @@ def empty_song() -> Song:
     song.tracks.append(Track(name="Track 1"))
     song.normalise()
     return song
+
+
+def bars_around(bars, lo: int, hi: int) -> tuple[int, int]:
+    """The whole bars covering ticks ``lo`` to ``hi`` (exclusive), or the one
+    bar at ``lo`` when ``hi`` is not past it: a loop range."""
+    first = bars.bar_containing(lo)
+    last = bars.bar_containing(max(lo, hi - 1))
+    return first.start_tick, last.end_tick
+
+
+def loop_text(bars, loop: tuple[int, int] | None) -> str:
+    """``bar 9`` or ``bars 9-10``, for a status line."""
+    if loop is None:
+        return ""
+    a = bars.bar_containing(loop[0]).number
+    b = bars.bar_containing(loop[1] - 1).number
+    return f"bar {a}" if a == b else f"bars {a}-{b}"

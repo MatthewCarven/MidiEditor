@@ -1140,3 +1140,19 @@ names are the short kind (Kick, Snr, HH-c, six characters at most), so the
 window's 60 px gutter and the terminal's fit them as they are. I had
 written a gutter-widening fix before checking the table; it went back out
 again. A test pins the labels. Three tests. 471 tests.
+
+### A loop
+
+2026-10-20. `Transport.loop` is a tick range; `play()` ends the schedule at
+the loop's end, and `cycle()`, called once a frame by both editors, plays
+again from the start when the position reaches it or the schedule has run
+out. The wrap is a stop and a play, which buys two things for nothing: a
+note across the loop's end gets its per-note release, and one sounding at
+the start restrikes (chase). L sets the loop over the selection's bars, or
+the current bar with nothing selected (the playhead's in the window, the
+cursor's in the terminal), and L again clears it. The window shows it as a
+translucent band on the ruler; both status lines say `loop bars 9-10`. A
+wrap to a loop start that has scrolled off screen brings the view back.
+The gap at the wrap is one frame plus a lead; a sample-tight loop would
+need the sink to loop by itself, which can wait for ears. Six tests. 477
+tests.

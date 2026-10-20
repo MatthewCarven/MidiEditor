@@ -19,7 +19,7 @@ from ..core.grid import GridView, Zoom
 from ..core.index import SongIndex
 from ..core.model import DEFAULT_MIDDLE_C_OCTAVE, Song
 from ..core.render import Matrix
-from .paint import Layout, PaintPlan, Primitive, hover_plan, plan, playhead_plan
+from .paint import Layout, PaintPlan, Primitive, hover_plan, loop_plan, plan, playhead_plan
 from ..ui_common import beats_text, default_track  # noqa: F401 - re-exported, as before the lift
 
 
@@ -273,6 +273,12 @@ class GridWidget:
             return []
         return playhead_plan(self.layout, self.first_cell, self.view.ticks_per_cell, tick,
                              self.plan.cols, self.plan.rows)
+
+    def loop_items(self, loop: tuple[int, int] | None) -> list[Primitive]:
+        """The loop's band on the ruler, in this view; nothing off screen."""
+        if self.plan is None:
+            return []
+        return loop_plan(self.layout, self.first_cell, self.view.ticks_per_cell, loop, self.plan.cols)
 
     def status(self) -> str:
         """The status line: where the mouse is, and what's under it. In the

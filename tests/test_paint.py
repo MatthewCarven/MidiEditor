@@ -207,3 +207,16 @@ class TestLayout:
         assert Layout().with_cell_w(1).cell_w == Layout.MIN_CELL_W
         assert Layout().with_cell_w(999).cell_w == Layout.MAX_CELL_W
         assert Layout().with_cell_w(20).cell_w == 20
+
+
+def test_loop_plan_is_a_band_across_the_ruler_clipped_to_the_grid():
+    from midiseq.ui_gui.paint import loop_plan
+    layout, first_cell, tpc, cols = Layout(), 128, 120, 40
+    [band] = loop_plan(layout, first_cell, tpc, (128 * 120, 136 * 120), cols)
+    assert isinstance(band, Rect) and band.role == "loop"
+    assert band.x0 == layout.gutter_w and band.x1 == layout.gutter_w + 8 * layout.cell_w
+    assert band.y0 == 0 and band.y1 == layout.ruler_h
+    assert loop_plan(layout, first_cell, tpc, None, cols) == []
+    assert loop_plan(layout, first_cell, tpc, (0, 100 * 120), cols) == []        # off to the left
+    [clipped] = loop_plan(layout, first_cell, tpc, (0, 999 * 120), cols)
+    assert clipped.x0 == layout.gutter_w and clipped.x1 == layout.gutter_w + cols * layout.cell_w

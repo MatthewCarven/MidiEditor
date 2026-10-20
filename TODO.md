@@ -314,7 +314,9 @@ one layer up: **only what you actually changed changes.**
       stop and play again. A live-updated schedule is a later feature. *Done 2026-10-20: edits resync from the position.*
 - [ ] Open: Windows ignores `timeBeginPeriod` for a minimised window, so a
       minimised editor can wake ~15 ms late. Nothing to do in-process.
-- [ ] Open: no loop / cycle range, no metronome, no record from a MIDI input
+- [x] Loop range. *2026-10-20: L in both editors, over the selection's bars or the
+      current bar; the transport wraps with a stop and a play.*
+- [ ] Open: no metronome, no record from a MIDI input
 - [x] **Test — Matthew's ears, 2026-10-19: "working perfectly".** Sound,
       latency and audition all passed in one go.
 - [x] **Review, triaged by hand (2026-10-19):** the confirmed finding fixed

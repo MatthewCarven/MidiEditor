@@ -591,3 +591,12 @@ class TestTheTerminalCatchesUp:
         assert not sink.rolling                                  # the old one let go
         assert ed.run_key("audio.output", {"port": "silent"}) == "MIDI out: silent"
         assert ed.silent and ed.transport.rolling
+
+
+class TestLoop:
+    def test_l_loops_the_cursor_bar_and_the_palette_has_it(self):
+        song, g, ed, sink, clock = make()
+        at(g, 60, BAR9 + BEAT)
+        assert ed.key("l") and ed.transport.loop == (BAR9, BAR9 + BAR)
+        assert "loop bar 9" in ed.status_tail()
+        assert ed.run_key("transport.loop") == "Loop off" and ed.transport.loop is None

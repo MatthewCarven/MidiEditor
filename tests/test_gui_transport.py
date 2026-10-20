@@ -345,3 +345,31 @@ class TestEditsWhileRolling:
         assert abs(sink.schedule.start_tick - BAR) <= 1
         ed.undo()
         assert len(sink.started) == 3
+
+
+class TestLoop:
+    def test_l_loops_the_playhead_bar_then_the_selection_then_off(self):
+        song, w, ed, sink, clock = make(bar=1)
+        assert ed.key("l") and ed.transport.loop == (0, BAR) and "Loop bar 1" in ed.message
+        assert any(p.role == "loop" for p in ed.playhead_items())
+        ed.key("l")
+        assert ed.transport.loop is None and "off" in ed.message
+        ed.select_all()
+        ed.key("l")
+        first = w.view.bars.bar_containing(min(n.start for n in song.tracks[2].notes))
+        assert ed.transport.loop[0] == first.start_tick and "loop bar" in ed.status_tail()
+
+    def test_the_wrap_brings_the_view_back_to_the_loop(self):
+        song, w, ed, sink, clock = make(bar=9)
+        w.resize(400, 760)                                       # short pages
+        ed.select_all()
+        ed.key("l")                                              # the Rhodes' bars
+        ed.deselect()
+        start = ed.transport.loop[0]
+        ed.seek(start)
+        ed.toggle_play()
+        assert len(sink.started) == 1
+        w.go_to_bar(1)                                           # scrolled away
+        clock.advance(60.0)                                      # well past the loop's end
+        ed.frame()
+        assert len(sink.started) == 2 and w.tick_visible(start)  # wrapped, and the view came back

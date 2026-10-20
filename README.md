@@ -111,6 +111,7 @@ PageUp/PageDown       a screen of pitches   Home / End         first / last bar
 Tab / Shift+Tab       next / previous track G                  ghosts on/off
 F                     fit the pitch range   + / -              cell width
 Ctrl+= / Ctrl+-       finer / coarser grid  File > Open        another file
+L                     loop: the selection's bars, or the playhead's; L again: off
 ```
 
 Two zooms, deliberately on different hands. **Cell width** (Ctrl+wheel, `+`
@@ -181,7 +182,11 @@ line and the view turns the page when it passes the right edge - unless you
 have scrolled away from it, in which case the view is yours until the
 playhead is back in it; never mid-drag. Space with nothing ahead of the
 playhead starts again from the top, as |< would. Switching the MIDI output
-while rolling carries on from where it was, on the new output.
+while rolling carries on from where it was, on the new output. L sets a loop
+over the selection's bars (the playhead's bar with nothing selected) and L
+again clears it; the loop is a band on the ruler and a word in the status
+line, and the wrap is a stop and a play, so a note across the end gets its
+release.
 
 Sound comes from a MIDI output, not from midiseq. `seq gui --midi-out NAME`
 picks one by name, exact first, else substring; with nothing asked for, the
@@ -234,6 +239,7 @@ Tab / Shift+Tab   next / previous track        + / -             a cell longer /
 G / F             ghosts on/off / fit pitches  Ctrl+A / Esc      select the track / deselect
 Space             play / stop                  Ctrl+Z / Ctrl+Y   undo / redo
 Shift+P           play from the cursor         X / C / V / D     cut, copy, paste at the cursor, duplicate
+L                 loop: the selection's bars, or the cursor's; L again: off
 P                 playhead to the cursor       Ctrl+S            save
 A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)
 :                 the command palette          ?                 this table

@@ -218,6 +218,7 @@ DEFAULT_THEME: dict[str, tuple[int, int, int, int]] = {
     "marquee": (120, 180, 255, 255),      # the selection rectangle
     "erase": (255, 90, 90, 255),          # notes a right-drag sweep will delete
     "playhead": (255, 255, 255, 230),     # the transport's position, ruler to lane
+    "loop": (120, 180, 255, 70),          # the loop range, a band across the ruler
 }
 
 
@@ -264,6 +265,21 @@ def playhead_plan(layout: Layout, first_cell: int, ticks_per_cell: int, tick: in
         return []
     bottom = layout.ruler_h + rows * layout.row_h + layout.lane_h
     return [Line(x, 0, x, bottom, "playhead")]
+
+
+def loop_plan(layout: Layout, first_cell: int, ticks_per_cell: int, loop: tuple[int, int] | None,
+              cols: int) -> list[Primitive]:
+    """The loop range as a translucent band across the ruler, clipped to
+    the grid; nothing when there is no loop or it is off screen."""
+    if loop is None:
+        return []
+    left = layout.gutter_w
+    right = left + cols * layout.cell_w
+    x0 = max(left, layout.x_of_tick(loop[0], first_cell, ticks_per_cell))
+    x1 = min(right, layout.x_of_tick(loop[1], first_cell, ticks_per_cell))
+    if x1 <= x0:
+        return []
+    return [Rect(x0, 0, x1, layout.ruler_h, "loop")]
 
 
 # --------------------------------------------------------------------------

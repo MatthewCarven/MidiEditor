@@ -29,6 +29,7 @@ TUI_ACTIONS = [
     ("view.track", "Track…", "Tab"),
     ("transport.play", "Play / Stop", "Space"),
     ("transport.rewind", "Rewind", "Home"),
+    ("transport.loop", "Loop: selection's bars / off", "L"),
     ("audio.output", "MIDI output...", None),
     ("app.help", "Keys", "?"),
     ("app.quit", "Quit", "Ctrl+Q"),

@@ -72,7 +72,8 @@ from .grid import GridWidget
 from .paint import Primitive, Rect, lane_bar, tick_rect
 from ..ui_common import (  # noqa: F401 - re-exported: these were this module's names until the lift
     ACTIONS, GESTURE_ONLY, NOTE_NAMES, PROMPTS, VELOCITY_STEP, MenuEntry, _count, _entry, all_entries,
-    build_command, edit_menu, menu_sections, palette, parse_key, pitch_class, velocity_change,
+    bars_around, build_command, edit_menu, loop_text, menu_sections, palette, parse_key, pitch_class,
+    velocity_change,
 )
 
 LEFT, RIGHT = 0, 1
@@ -284,6 +285,9 @@ class Editor:
         when the playhead runs off the right edge, and notes whether its
         line needs repainting. Returns the playhead's tick."""
         t = self.transport
+        if t.cycle() and not self.widget.tick_visible(t.loop[0]):
+            self.widget.go_to_bar(self.widget.view.bars.bar_containing(t.loop[0]).number)
+            self._arm_follow()
         tick = t.position()
         if t.rolling:
             self._follow(tick)
@@ -313,7 +317,7 @@ class Editor:
         self.playhead_dirty = False
         tick = self.transport.position()
         self._playhead_shown = tick
-        return self.widget.playhead_items(tick)
+        return self.widget.loop_items(self.transport.loop) + self.widget.playhead_items(tick)
 
     def transport_state(self) -> TransportState:
         t = self.transport
@@ -568,6 +572,9 @@ class Editor:
         if name == "a" and not ctrl:
             self.toggle_audition()
             return True
+        if name == "l" and not ctrl:
+            self.toggle_loop()
+            return True
         if name == "q" and not ctrl:
             self.quantise_to_grid()
             return True
@@ -623,6 +630,22 @@ class Editor:
                 return False
             self.message = "From the top"
         return True
+
+    def toggle_loop(self) -> str:
+        """L: a loop over the selection's bars, else the playhead's bar; L
+        again turns it off."""
+        t = self.transport
+        if t.loop is not None:
+            t.set_loop(None)
+            self.message = "Loop off"
+        else:
+            notes = self._selected_notes()
+            lo = min(n.start for n in notes) if notes else t.position()
+            hi = max(n.end for n in notes) if notes else lo
+            t.set_loop(bars_around(self.widget.view.bars, lo, hi))
+            self.message = f"Loop {loop_text(self.widget.view.bars, t.loop)}"
+        self.playhead_dirty = True
+        return self.message
 
     def rewind(self) -> None:
         """The |< button: bar 1, rolling or not, and the view goes with it."""
@@ -837,6 +860,8 @@ class Editor:
             parts.append(f"sel {len(self.selection)}")
         if not self.transport.audition_enabled:
             parts.append("audition off")
+        if self.transport.loop is not None:
+            parts.append(f"loop {loop_text(self.widget.view.bars, self.transport.loop)}")
         if self.history.can_undo:
             parts.append(f"undo: {self.history.undo_label}")
         if self.message:

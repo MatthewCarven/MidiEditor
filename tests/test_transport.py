@@ -321,3 +321,30 @@ class TestChase:
         t.stop()
         t.resync()                                                  # stopped: nothing to do
         assert len(sink.started) == 2
+
+
+class TestLoop:
+    def test_cycle_wraps_at_the_loop_end_and_stop_ends_it(self):
+        clock = FakeClock()
+        sink = NullSink(clock=clock)
+        t = Transport(two_track_song(), sink)
+        t.set_loop((0, 2 * BEAT))
+        t.play(0)
+        assert all(e.tick < 2 * BEAT for e in sink.schedule.events if e.is_note_on)
+        clock.advance(0.9)
+        assert not t.cycle() and len(sink.started) == 1
+        clock.advance(0.2)                                          # past the loop's end at 1.0 s
+        assert t.cycle() and len(sink.started) == 2 and sink.schedule.start_tick == 0
+        t.stop()
+        assert not t.cycle() and len(sink.started) == 2
+
+    def test_set_loop_while_rolling_takes_effect_at_once_and_an_empty_loop_is_none(self):
+        clock = FakeClock()
+        sink = NullSink(clock=clock)
+        t = Transport(two_track_song(), sink)
+        t.play(0)
+        t.set_loop((0, BEAT))
+        assert len(sink.started) == 2
+        assert all(e.tick < BEAT for e in sink.schedule.events if e.is_note_on)
+        t.set_loop((BEAT, BEAT))
+        assert t.loop is None

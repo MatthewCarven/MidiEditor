@@ -352,6 +352,8 @@ class Transport:
         self.sink = sink
         self.audition_enabled = True
         self.playhead = 0
+        self.loop: tuple[int, int] | None = None   # (start_tick, end_tick), end exclusive
+        self._looping = False                       # a loop is set and play() honoured it
         self._start_tick = 0
         self._schedule: Schedule | None = None
 
@@ -391,9 +393,12 @@ class Transport:
             self.stop()
         start = self.position() if from_tick is None else max(0, from_tick)
         self.playhead = start
-        sched = schedule(self.song, start)
+        end = self.loop[1] if self.loop is not None and start < self.loop[1] else None
+        sched = schedule(self.song, start, end)
+        self._looping = self.loop is not None
         if sched.is_empty:
             self._schedule = None
+            self._looping = False
             return False
         self._start_tick = start
         self._schedule = sched
@@ -406,6 +411,7 @@ class Transport:
         asked for the position in between."""
         self.playhead = self.position()
         self._schedule = None
+        self._looping = False
         self.sink.stop()
 
     def toggle(self) -> bool:
@@ -414,6 +420,27 @@ class Transport:
             self.stop()
             return False
         return self.play()
+
+    def set_loop(self, loop: tuple[int, int] | None) -> None:
+        """A loop range (end exclusive), or None for none. Takes effect at
+        once when rolling: the schedule is rebuilt to end at the loop's end."""
+        self.loop = loop if loop is not None and loop[1] > loop[0] else None
+        if self.rolling:
+            self.resync()
+        elif self.loop is None:
+            self._looping = False
+
+    def cycle(self) -> bool:
+        """Once a frame while a loop is set: at its end, play again from its
+        start. Returns whether it wrapped. The wrap is a stop and a play, so
+        a note across the loop's end gets its release, and one sounding at
+        the start restrikes (chase)."""
+        if self.loop is None or not self._looping:
+            return False
+        start, end = self.loop
+        if self.rolling and self.position() < end:
+            return False
+        return self.play(start)
 
     def resync(self) -> None:
         """After an edit while rolling: the sink's schedule is stale, so play

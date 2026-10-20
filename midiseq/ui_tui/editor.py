@@ -43,7 +43,8 @@ from ..core.edit import REGISTRY, Command, NoteSpec
 from ..core.history import History
 from ..core.model import DEFAULT_VELOCITY, Note, Song, parse_pitch
 from ..core.transport import Sink, Transport
-from ..ui_common import VELOCITY_STEP, _count, build_command, empty_song, parse_key, velocity_change
+from ..ui_common import (VELOCITY_STEP, _count, bars_around, build_command, empty_song, loop_text,
+                         parse_key, velocity_change)
 from .palette import Palette, prompts_for, tui_entries
 from .view import TextView
 
@@ -67,6 +68,7 @@ KEY_HELP = [
     "Shift+P           play from the cursor         X / C / V / D     cut, copy, paste at the cursor, duplicate",
     "P                 playhead to the cursor       Ctrl+S            save",
     "A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)",
+    "L                 loop: the selection's bars, or the cursor's; L again: off",
     ":                 the command palette          ?                 this table",
 ]
 
@@ -200,6 +202,9 @@ class Editor:
         when the playhead runs off the right edge, and says whether the
         picture needs repainting."""
         t = self.transport
+        if t.cycle() and not self.grid.tick_visible(t.loop[0]):
+            self.grid.go_to_bar(self.grid.view.bars.bar_containing(t.loop[0]).number)
+            self._arm_follow()
         tick = t.position()
         if t.rolling:
             self._follow(tick)
@@ -244,6 +249,22 @@ class Editor:
             self.grid.dirty = True
             return False
         return True
+
+    def toggle_loop(self) -> str:
+        """L: a loop over the selection's bars, else the cursor's bar; L
+        again turns it off."""
+        t = self.transport
+        if t.loop is not None:
+            t.set_loop(None)
+            self.message = "Loop off"
+        else:
+            notes = self._selected_notes()
+            lo = min(n.start for n in notes) if notes else self.grid.cursor_tick
+            hi = max(n.end for n in notes) if notes else lo
+            t.set_loop(bars_around(self.grid.view.bars, lo, hi))
+            self.message = f"Loop {loop_text(self.grid.view.bars, t.loop)}"
+        self.grid.dirty = True
+        return self.message
 
     def rewind(self) -> None:
         """Home: bar 1, rolling or not, and the view and cursor go with it."""
@@ -308,6 +329,9 @@ class Editor:
             return True
         if name == "a":
             self.toggle_audition()
+            return True
+        if name == "l":
+            self.toggle_loop()
             return True
 
         # -- editing at the cursor
@@ -753,6 +777,8 @@ class Editor:
         if key == "transport.rewind":
             self.rewind()
             return self.message
+        if key == "transport.loop":
+            return self.toggle_loop()
         if key == "app.quit":
             self.request_quit()
             return self.message
@@ -805,6 +831,8 @@ class Editor:
             parts.append(f"sel {len(self.selection)}")
         if not self.transport.audition_enabled:
             parts.append("audition off")
+        if self.transport.loop is not None:
+            parts.append(f"loop {loop_text(self.grid.view.bars, self.transport.loop)}")
         if self.silent and self.sink_note:
             parts.append(self.sink_note)
         if self.history.can_undo:

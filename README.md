@@ -164,6 +164,10 @@ strength; a velocity as `96`, `+10` or `x0.8`.
 
 File > New, Save and Save as write `.mid` through the same writer `seq build`
 uses, so the passthrough rule holds: nothing you didn't touch is rewritten.
+Closing the window with its X cannot ask about unsaved changes (DearPyGui
+has no cancellable close), so the song is written beside its file as
+`name.autosave.mid` and the console says so; opening the file again flags an
+autosave newer than it. Quit and Ctrl+Q ask, as before.
 
 ### Playback
 

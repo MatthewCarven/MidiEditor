@@ -1093,4 +1093,20 @@ restrikes there with what is left of it - chase, what a DAW does - and
 `Transport.resync()` plays again from the position; both editors call it
 after every run, undo and redo. A held note across an edit blinks for a
 lead rather than dropping out. The one test that pinned "not restarted"
-now pins the chase; five tests added. 464 tests.
+now pins the chase; four tests added. 463 tests.
+
+### The X button, and the meter label
+
+2026-10-20. DearPyGui has no cancellable close, so the window's X button
+skipped the unsaved-changes question. It still cannot ask, but it no longer
+loses anything: on the way out, unsaved work is written beside the song as
+`name.autosave.mid` (`untitled.autosave.mid` in the working directory for a
+song never saved), the console says so, and opening the song again flashes
+a hint when a newer autosave sits next to it. `autosave_path` and
+`autosave` live in `ui_common.py`, where the terminal can reach them too.
+
+The text view labelled the meter on every bar whose meter differed from the
+*first* bar's - so a song that goes to 3/4 at bar 11 said (3/4) on every bar
+after - while the window labels it where it changes. The text view now does
+the same: the first bar of a slice, and where it changes from the bar
+before. One test added. 464 tests.

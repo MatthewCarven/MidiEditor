@@ -41,3 +41,14 @@ def test_both_editors_build_the_same_command_from_the_same_answers():
                                               {1, 2}, tpc=120, middle_c_octave=4)
     assert isinstance(command, edit.TransposeDiatonic)
     assert keysig == (9, "minor")                                   # the prompt's key signature is remembered
+
+
+def test_autosave_lands_beside_the_song_or_in_the_cwd(tmp_path, monkeypatch):
+    from midiseq.core import io_midi
+    song = io_midi.load(Path(__file__).resolve().parent.parent / "examples" / "bluesy.mid")
+    target = ui_common.autosave(song, tmp_path / "tune.mid")
+    assert target == tmp_path / "tune.autosave.mid" and target.exists()
+    assert len(io_midi.load(target).tracks) == len(song.tracks)
+    monkeypatch.chdir(tmp_path)
+    untitled = ui_common.autosave_path(None)
+    assert untitled.name == "untitled.autosave.mid" and untitled.parent.resolve() == tmp_path.resolve()

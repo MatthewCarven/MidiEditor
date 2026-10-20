@@ -12,8 +12,9 @@ wrong way round: the terminal is not a kind of window.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
-from .core import edit
+from .core import edit, io_midi
 from .core.edit import Category, Command
 from .core.model import Song, parse_pitch
 
@@ -214,3 +215,20 @@ def build_command(key: str, raw: dict[str, str], nids: set[int], *, tpc: int,
             keysig = parse_key(raw["key"])
         return edit.SnapToScale(sel, root=keysig[0], scale=keysig[1]), keysig
     raise KeyError(key)
+
+
+def autosave_path(path: Path | None) -> Path:
+    """Where unsaved work goes when a window is closed from the outside (the
+    X button, which DearPyGui cannot make ask first): beside the song as
+    ``name.autosave.mid``, or ``untitled.autosave.mid`` in the working
+    directory for a song that was never saved."""
+    if path is None:
+        return Path.cwd() / "untitled.autosave.mid"
+    return path.with_name(f"{path.stem}.autosave{path.suffix or '.mid'}")
+
+
+def autosave(song: Song, path: Path | None) -> Path:
+    """Write ``song`` to its autosave path and return that path."""
+    target = autosave_path(path)
+    io_midi.save(song, target)
+    return target

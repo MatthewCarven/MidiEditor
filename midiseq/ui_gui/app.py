@@ -72,6 +72,7 @@ from ..core.model import (
     Song,
     Track,
 )
+from ..ui_common import autosave, autosave_path
 from .editor import (
     PROMPTS, Editor, MenuEntry, TransportState, edit_menu, menu_sections, palette,
 )
@@ -287,6 +288,9 @@ class GridApp:
         dpg.set_primary_window(WINDOW, True)
         self._rebuild_track_menu()
         self.flash(f"MIDI out: {self.sink_note}")
+        hint = autosave_path(self.path)
+        if self.path and hint.exists() and hint.stat().st_mtime > self.path.stat().st_mtime:
+            self.flash(f"An autosave newer than {self.path.name} exists: {hint.name} (File > Open)")
 
         start_dir = str(self.path.parent) if self.path else ""
         with dpg.file_dialog(directory_selector=False, show=False, modal=True,
@@ -814,6 +818,10 @@ class GridApp:
                     break
             self.frame()
             dpg.render_dearpygui_frame()
+        if self.editor.dirty_since_save and screenshot is None:
+            # The X button: DearPyGui cannot make it ask, so the work is kept.
+            target = autosave(self.song, self.path)
+            print(f"midiseq: unsaved changes written to {target}", file=sys.stderr)
         self.editor.transport.stop()
         close = getattr(self.sink, "close", None)
         if callable(close):

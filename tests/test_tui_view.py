@@ -67,6 +67,7 @@ class TestThePicture:
         first, second = ruler.index("║"), ruler.index("║", ruler.index("║") + 1)
         assert ruler[first:second].count("│") == 2     # three beats, two separators
         assert "bar 11 (3/4)" in f.lines[0]
+        assert "12 (3/4)" not in f.lines[0]            # same meter as the bar before: no label, as in the window
 
     def test_a_short_terminal_drops_the_lane_before_the_pitches(self):
         v = make(width=60, height=10)

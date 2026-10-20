@@ -253,8 +253,8 @@ one layer up: **only what you actually changed changes.**
 - [x] **Decided: ASCII labels throughout** (`C#4`, not `C♯4`) — DPG's default
       font paints anything above U+00FF as `?`, and the text view already has
       an `--ascii` mode. A font range for ♭/♯ is a later nicety, not a need.
-- [ ] Open: the meter label repeats on *every* bar in the text view but only
-      where it changes in the window — make the two agree one way or the other
+- [x] Open: the meter label repeats on *every* bar in the text view but only
+      where it changes in the window — make the two agree one way or the other *2026-10-20: both show it at the first bar and where it changes.*
 - [ ] Open: no scrollbars yet — position is only visible in the ruler. A thin
       overview strip (where am I in the song) would do more than scrollbars
 - [x] **Test:** does it feel right, is it readable — judge before interaction *Looked, 2026-10-18.*
@@ -290,8 +290,8 @@ one layer up: **only what you actually changed changes.**
       Edit menu and the palette; paste lands at the playhead as one undo
       (`edit.AddNotes`) and selects what it pasted; duplicate lands after the
       selection's end. The clipboard holds plain tuples, never Note objects.
-- [ ] Open: closing the window with its X skips the unsaved-changes guard
-      (DearPyGui has no cancellable close); Ctrl+Q and File > Quit don't
+- [x] Open: closing the window with its X skips the unsaved-changes guard
+      (DearPyGui has no cancellable close); Ctrl+Q and File > Quit don't *2026-10-20: the X writes `name.autosave.mid` and says so; a newer autosave is flagged on open.*
 - [ ] **Test — for Matthew:** write a bar by hand, save it, open it in FL,
       and report what fights. `seq gui` with no file starts an empty song.
 

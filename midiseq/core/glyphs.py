@@ -144,7 +144,7 @@ def bar_header(matrix: Matrix, g: GlyphSet = UNICODE, gutter: int | None = None,
         # words, never the number: a truncated "bar 123" out of bar 1234 still
         # parses, and points a text edit at the wrong bar.
         full = f" bar {bar.number} "
-        if bar.timesig != matrix.bars[0].timesig or i == 0:
+        if i == 0 or bar.timesig != matrix.bars[i - 1].timesig:    # the first bar, and where it changes: the window's rule
             full = f" bar {bar.number} ({bar.timesig}) "
         title = full
         for shorter in (f" bar {bar.number} ", f" {bar.number} ", str(bar.number)):

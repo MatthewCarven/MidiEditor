@@ -1185,3 +1185,17 @@ and stops with the song and never clicks over silence. `Transport.
 metronome` flips it, from now if rolling; M in both editors, a check in
 the window's View menu, `click` in the status line. The window's key
 table gains M. Four tests. 486 tests.
+
+### Where am I, and a mouse
+
+2026-10-21. The window's ruler has a thin band along its bottom edge now:
+the whole song, the part on screen brighter, the playhead a tick. It is
+drawn with the playhead layer, so it moves with the view and the clock,
+and it stays away when the whole song fits. Not a scrollbar - you cannot
+drag it - but it answers the question the TODO asked.
+
+The terminal takes a mouse: a click on a square is Enter there, Shift+click
+is S, and a click on the header or the ruler puts the playhead there.
+`TextView.hit` maps a character to a square from the column positions it
+already keeps; the pane hands Textual's click to the editor the way it
+hands keys. Seven tests. 493 tests.

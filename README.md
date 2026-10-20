@@ -103,7 +103,8 @@ with the others as grey ghosts, the ruler with the meter where it changes, the
 status line names it: pitch, MIDI number, bar:beat.subdivision, length,
 velocity. K shades the rows outside the key, so a line in A minor reads against
 its scale; View > Key... sets the key, and the diatonic moves and Snap to
-scale set it too.
+scale set it too. A thin band under the ruler's numbers shows where the view
+and the playhead sit in the whole song.
 
 ```
 wheel                 scroll pitches        Shift+wheel        scroll time
@@ -228,6 +229,8 @@ so the picture still reads without it.
 
 It is the window's mouse model at a cursor. What a click does there, Enter
 does here, and it depends only on what is under the cursor — no tool modes.
+A mouse works too: click a square and it is Enter there, Shift+click is S,
+and a click on the ruler puts the playhead there.
 `?` shows this table in the terminal:
 
 ```

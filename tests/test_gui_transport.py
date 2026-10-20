@@ -196,7 +196,7 @@ class TestPicture:
         _, w, ed, _, _ = make()
         tick = BAR9 + BEAT + TPC // 2                            # half a cell past a boundary
         ed.seek(tick)
-        [line] = ed.playhead_items()
+        [line] = [p for p in ed.playhead_items() if p.role == "playhead"]   # the overview band rides along
         assert isinstance(line, Line) and line.role == "playhead"
         assert line.x0 == line.x1 == w.layout.x_of_tick(tick, w.first_cell, TPC)
         assert line.x0 == w.layout.x_of(w.first_cell + 4, w.first_cell) + w.layout.cell_w / 2
@@ -206,9 +206,9 @@ class TestPicture:
     def test_off_screen_is_not_drawn(self):
         _, w, ed, _, _ = make()
         ed.seek(0)                                               # bar 1; the view is at bar 9
-        assert ed.playhead_items() == []
+        assert not [p for p in ed.playhead_items() if p.role == "playhead"]
         ed.seek(w.tick_at_col(w.first_cell + w.visible_cols))
-        assert ed.playhead_items() == []
+        assert not [p for p in ed.playhead_items() if p.role == "playhead"]
 
     def test_the_role_is_in_the_theme(self):
         assert "playhead" in DEFAULT_THEME

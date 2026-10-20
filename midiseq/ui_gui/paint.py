@@ -221,6 +221,9 @@ DEFAULT_THEME: dict[str, tuple[int, int, int, int]] = {
     "erase": (255, 90, 90, 255),          # notes a right-drag sweep will delete
     "playhead": (255, 255, 255, 230),     # the transport's position, ruler to lane
     "loop": (120, 180, 255, 70),          # the loop range, a band across the ruler
+    "overview": (58, 58, 70, 255),        # the whole song, a thin band under the ruler's numbers
+    "overview_view": (140, 140, 160, 255),   # the part of it on screen
+    "overview_playhead": (255, 255, 255, 255),
 }
 
 
@@ -282,6 +285,33 @@ def loop_plan(layout: Layout, first_cell: int, ticks_per_cell: int, loop: tuple[
     if x1 <= x0:
         return []
     return [Rect(x0, 0, x1, layout.ruler_h, "loop")]
+
+
+def overview_plan(layout: Layout, first_cell: int, visible_cols: int, total_cells: int, cols: int,
+                  playhead_cell: int | None) -> list[Primitive]:
+    """Where am I in the song: a thin band along the bottom of the ruler
+    standing for the whole song, the part on screen brighter, the playhead
+    a tick. Nothing when the whole song is already on screen."""
+    total = max(total_cells, 1)
+    if first_cell == 0 and visible_cols >= total:
+        return []
+    left = layout.gutter_w
+    width = cols * layout.cell_w
+    y1 = layout.ruler_h - 1
+    y0 = y1 - 4
+
+    def x_at(cell: float) -> float:
+        return left + min(1.0, max(0.0, cell / total)) * width
+
+    x_view = x_at(first_cell)
+    items: list[Primitive] = [
+        Rect(left, y0, left + width, y1, "overview"),
+        Rect(x_view, y0, max(x_view + 2, x_at(first_cell + visible_cols)), y1, "overview_view"),
+    ]
+    if playhead_cell is not None:
+        x = x_at(playhead_cell)
+        items.append(Line(x, y0, x, y1, "overview_playhead"))
+    return items
 
 
 # --------------------------------------------------------------------------
@@ -424,4 +454,5 @@ def hover_plan(layout: Layout, first_cell: int, row: int, cell: int) -> list[Pri
 
 
 __all__ = ["Rect", "Line", "Label", "Layout", "PaintPlan", "DEFAULT_THEME", "LANE_MARKS",
-           "plan", "hover_plan", "playhead_plan", "lane_bar", "span_rect", "tick_rect"]
+           "plan", "hover_plan", "playhead_plan", "loop_plan", "overview_plan", "lane_bar",
+           "span_rect", "tick_rect"]

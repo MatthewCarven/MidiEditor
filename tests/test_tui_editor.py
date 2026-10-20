@@ -617,3 +617,24 @@ class TestMetronome:
         _, _, ed, _, _ = make()
         assert ed.key("m") and ed.transport.metronome and "click" in ed.status_tail()
         assert ed.run_key("transport.metronome") == "Metronome off" and not ed.transport.metronome
+
+
+class TestMouse:
+    def _xy(self, g, pitch, tick):
+        g.build()
+        x = g._xs[g._col_index[g.view.tick_to_cell(tick)]]
+        row = next(i for i, r in enumerate(g.matrix.rows) if r.pitch == pitch)
+        return x, row + 2
+
+    def test_a_click_is_enter_there_and_shift_click_is_s(self):
+        song, g, ed, sink, clock = make()
+        assert ed.click(*self._xy(g, *G4)) and ed.selection == {find(song, *G4).nid}
+        assert ed.click(*self._xy(g, *A4), shift=True)
+        assert ed.selection == {find(song, *G4).nid, find(song, *A4).nid}
+        assert (g.cursor_pitch, g.cursor_tick) == A4
+
+    def test_a_click_on_the_ruler_moves_the_playhead(self):
+        song, g, ed, sink, clock = make()
+        x, _ = self._xy(g, *A4)
+        assert ed.click(x, 1) and ed.transport.playhead == A4[1]
+        assert not ed.click(0, 5)                                            # the gutter

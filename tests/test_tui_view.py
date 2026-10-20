@@ -215,3 +215,15 @@ class TestFollowAndStatus:
         song.tracks[2].version += 1
         assert v.note_at(67, cell(v, G4[1])).start == G4[1]
         assert v.note_at(67, cell(v, G4[1]) - 1) is early
+
+
+def test_hit_maps_a_click_to_a_square_the_ruler_or_nothing():
+    from midiseq.ui_tui.view import HEADER_LINES
+    v = make()
+    v.build()
+    assert v.hit(0, 5) == (None, None)                                       # the gutter
+    x = v._xs[3]
+    assert v.hit(x, HEADER_LINES + 2) == (v.matrix.rows[2].pitch, v.matrix.columns[3].cell)
+    assert v.hit(x + 1, HEADER_LINES + 2) == v.hit(x, HEADER_LINES + 2)      # a cell is two characters
+    assert v.hit(x, 1) == (None, v.matrix.columns[3].cell)                   # the ruler
+    assert v.hit(x, HEADER_LINES + len(v.matrix.rows) + 1) == (None, None)   # the lane

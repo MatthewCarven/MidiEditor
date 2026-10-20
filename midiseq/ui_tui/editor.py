@@ -69,6 +69,7 @@ KEY_HELP = [
     "P                 playhead to the cursor       Ctrl+S            save",
     "A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)",
     "M                 metronome on/off: wood blocks on channel 10, the downbeat louder",
+    "mouse             click a square: Enter there; Shift+click: S; click the ruler: playhead",
     "K                 scale filter: shade the rows outside the key (Key... sets it)",
     "L                 loop: the selection's bars, or the cursor's; L again: off",
     ":                 the command palette          ?                 this table",
@@ -489,6 +490,23 @@ class Editor:
             self.run_key(key)
 
     # -- actions at the cursor ------------------------------------------------------
+
+    def click(self, x: int, y: int, *, shift: bool = False) -> bool:
+        """A mouse click in the pane: on a square it is Enter there (select
+        and play the note, or insert one), with Shift it is S (add to or
+        drop from the set); on the header or the ruler it puts the playhead
+        there. Returns whether it did anything."""
+        pitch, cell = self.grid.hit(x, y)
+        if cell is None:
+            return False
+        if pitch is None:
+            self.seek(self.grid.view.cell_to_tick(cell))
+            return True
+        self.grid.put_cursor(pitch, cell)
+        if shift:
+            return self.key("s")
+        self.enter()
+        return True
 
     def enter(self) -> None:
         """Enter is a click: select and play the note under the cursor, or

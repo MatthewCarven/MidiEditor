@@ -19,7 +19,8 @@ from ..core.grid import GridView, Zoom
 from ..core.index import SongIndex
 from ..core.model import DEFAULT_MIDDLE_C_OCTAVE, Song
 from ..core.render import Matrix
-from .paint import Layout, PaintPlan, Primitive, hover_plan, loop_plan, plan, playhead_plan
+from .paint import (Layout, PaintPlan, Primitive, hover_plan, loop_plan, overview_plan, plan,
+                    playhead_plan)
 from ..ui_common import beats_text, default_track  # noqa: F401 - re-exported, as before the lift
 
 
@@ -36,6 +37,7 @@ class GridWidget:
         self.view = GridView(song, zoom, self.index)
         self.ghosts = ghosts
         self.scale: tuple[int, str] | None = None     # shade the rows outside this key, when set
+        self._total_cells = 1                         # the song's length in cells, for the overview
         self.middle_c_octave = middle_c_octave
         self.layout = layout
 
@@ -195,6 +197,8 @@ class GridWidget:
         t1 = time.perf_counter()
         self.plan = plan(self.matrix, self.layout, first_cell=first,
                          width=self.width, height=self.height)
+        end = max((n.end for t in self.song.tracks for n in t.notes), default=0)
+        self._total_cells = max(1, self.view.tick_to_cell(end) + 1)
         t2 = time.perf_counter()
         self.render_ms = (t1 - t0) * 1e3
         self.plan_ms = (t2 - t1) * 1e3
@@ -286,6 +290,15 @@ class GridWidget:
         if self.plan is None:
             return []
         return loop_plan(self.layout, self.first_cell, self.view.ticks_per_cell, loop, self.plan.cols)
+
+    def overview_items(self, playhead_tick: int | None) -> list[Primitive]:
+        """The whole-song band under the ruler's numbers: where the view and
+        the playhead sit in the song."""
+        if self.plan is None:
+            return []
+        cell = None if playhead_tick is None else self.view.tick_to_cell(playhead_tick)
+        return overview_plan(self.layout, self.first_cell, self.visible_cols, self._total_cells,
+                             self.plan.cols, cell)
 
     def status(self) -> str:
         """The status line: where the mouse is, and what's under it. In the

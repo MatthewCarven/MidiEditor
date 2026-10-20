@@ -318,7 +318,8 @@ class Editor:
         self.playhead_dirty = False
         tick = self.transport.position()
         self._playhead_shown = tick
-        return self.widget.loop_items(self.transport.loop) + self.widget.playhead_items(tick)
+        w = self.widget
+        return w.loop_items(self.transport.loop) + w.overview_items(tick) + w.playhead_items(tick)
 
     def transport_state(self) -> TransportState:
         t = self.transport

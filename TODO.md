@@ -255,8 +255,8 @@ one layer up: **only what you actually changed changes.**
       an `--ascii` mode. A font range for ♭/♯ is a later nicety, not a need.
 - [x] Open: the meter label repeats on *every* bar in the text view but only
       where it changes in the window — make the two agree one way or the other *2026-10-20: both show it at the first bar and where it changes.*
-- [ ] Open: no scrollbars yet — position is only visible in the ruler. A thin
-      overview strip (where am I in the song) would do more than scrollbars
+- [x] Open: no scrollbars yet — position is only visible in the ruler. A thin
+      overview strip (where am I in the song) would do more than scrollbars *2026-10-21: an overview band under the ruler's numbers.*
 - [x] **Test:** does it feel right, is it readable — judge before interaction *Looked, 2026-10-18.*
       exists. **For Matthew**, see above.
 
@@ -357,7 +357,7 @@ one layer up: **only what you actually changed changes.**
     degree, Ctrl+Y redo, Save as in the palette; `?` shows the table
   - [ ] still unconfirmed in Windows Terminal: Ctrl+Up/Down (velocity) and Shift+Tab —
     `:vel` and Tab round the tracks are the fallbacks if they don't arrive
-  - [ ] a mouse in the terminal: Textual gives clicks for free, and `TextView._xs`
+  - [x] a mouse in the terminal: Textual gives clicks for free, and `TextView._xs` *2026-10-21: click, Shift+click, and the ruler.*
     already knows which column is under which character
 
 ## Step 7 — the good stuff

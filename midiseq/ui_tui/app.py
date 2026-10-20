@@ -91,6 +91,11 @@ class GridPane(Widget, can_focus=True):
             event.prevent_default()
         self.app.after_key()
 
+    def on_click(self, event: events.Click) -> None:
+        if self.editor.click(event.x, event.y, shift=event.shift):
+            event.stop()
+        self.app.after_key()
+
     def render(self) -> Text:
         return frame_text(self.editor.picture())
 

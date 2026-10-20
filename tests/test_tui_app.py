@@ -121,3 +121,13 @@ class TestTheApp:
         assert text.plain.count("\n") == 25
         styled = {span.style for span in text.spans}
         assert any(getattr(s, "reverse", False) for s in styled)    # the cursor
+
+
+def test_a_click_in_the_pane_reaches_the_editor():
+    async def body(app, pilot):
+        grid = app.editor.grid
+        x = grid._xs[grid._col_index[grid.view.tick_to_cell(8 * 4 * 480 + 480)]]
+        row = next(i for i, r in enumerate(grid.matrix.rows) if r.pitch == 67)
+        await pilot.click(GridPane, offset=(x, row + 2))
+        assert app.editor.selection and grid.cursor_pitch == 67
+    run(body)

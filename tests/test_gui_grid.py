@@ -133,3 +133,15 @@ def test_a_drum_track_labels_its_rows_by_name_and_the_gutter_fits():
     w.set_track(0)
     w.build()
     assert {r.pitch: r.label for r in w.matrix.rows}[60] == "C4"
+
+
+def test_the_widget_draws_an_overview_once_the_song_outgrows_the_window():
+    from pathlib import Path
+    from midiseq.core import io_midi
+    song = io_midi.load(Path(__file__).resolve().parent.parent / "examples" / "bluesy.mid")
+    w = GridWidget(song, 2)
+    w.resize(800, 600)
+    w.go_to_bar(9)
+    w.build()
+    roles = [item.role for item in w.overview_items(0)]
+    assert roles == ["overview", "overview_view", "overview_playhead"]

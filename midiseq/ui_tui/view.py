@@ -18,6 +18,8 @@ so the picture reads on a terminal with no colour at all.
 
 from __future__ import annotations
 
+import bisect
+
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -319,6 +321,24 @@ class TextView:
         track = self.song.tracks[self.track]
         hits = [n for n in self.view.notes_in_cell_range(track, cell, cell) if n.pitch == pitch]
         return max(hits, key=lambda n: (n.start, n.nid)) if hits else None
+
+    def hit(self, x: int, y: int) -> tuple[int | None, int | None]:
+        """What a click lands on, as ``(pitch, cell)``: a square gives both;
+        the header and the ruler give a cell and no pitch; the gutter and
+        the lane give neither."""
+        matrix = getattr(self, "matrix", None)
+        if matrix is None or not self._xs:
+            return None, None
+        i = bisect.bisect_right(self._xs, x) - 1
+        if i < 0:
+            return None, None
+        cell = matrix.columns[i].cell
+        ri = y - HEADER_LINES
+        if 0 <= ri < len(matrix.rows):
+            return matrix.rows[ri].pitch, cell
+        if y < HEADER_LINES:
+            return None, cell
+        return None, None
 
     def note_at_cursor(self) -> Note | None:
         return self.note_at(self.cursor_pitch, self.cursor_cell)

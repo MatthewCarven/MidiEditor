@@ -191,6 +191,7 @@ class Editor:
 
     def run(self, command: Command, *, audition: bool = True) -> Command:
         self.history.run(command)
+        self.transport.resync()
         if audition:
             self.transport.audition(command.auditions())
         self.message = f"{command.label}: {_count(len(command.touched))}"
@@ -198,11 +199,15 @@ class Editor:
 
     def undo(self) -> str:
         c = self.history.undo()
+        if c:
+            self.transport.resync()
         self.message = f"Undid {c.label}" if c else "Nothing to undo"
         return self.message
 
     def redo(self) -> str:
         c = self.history.redo()
+        if c:
+            self.transport.resync()
         self.message = f"Redid {c.label}" if c else "Nothing to redo"
         return self.message
 

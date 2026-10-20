@@ -272,10 +272,12 @@ def schedule(song: Song, start_tick: int = 0, end_tick: int | None = None) -> Sc
     (exclusive, default: the end), as raw bytes with seconds relative to the
     start, in the order a sink should send them.
 
-    Notes that began before ``start_tick`` are not restarted; a release
-    without its attack would be noise. Set-up messages before the start are
-    folded into a prelude at second zero: the last program change, the last
-    value of each controller, the last pitch bend, per channel.
+    Notes sounding at ``start_tick`` restrike there with what is left of them
+    (chase), so playing from the middle of a held chord plays the chord; a
+    note that ended at or before the start is skipped. Set-up messages before
+    the start are folded into a prelude at second zero: the last program
+    change, the last value of each controller, the last pitch bend, per
+    channel.
     """
     clock = TempoClock(song)
     start_tick = max(0, start_tick)
@@ -301,13 +303,19 @@ def schedule(song: Song, start_tick: int = 0, end_tick: int | None = None) -> Sc
             events.append(ScheduledEvent(clock.seconds_at(ev.tick) - t0, raw, ev.tick, ORDER_OTHER))
 
         for n in track.notes:
-            if n.start < start_tick or (end_tick is not None and n.start >= end_tick):
+            if end_tick is not None and n.start >= end_tick:
                 continue
+            if n.start < start_tick:
+                if n.end <= start_tick:
+                    continue
+                on_tick = start_tick            # chase: sounding at the start, so restrike with what is left
+            else:
+                on_tick = n.start
             ch = (n.channel if n.channel is not None else track.channel) & 0x0F
             vel = max(1, min(127, n.velocity))
             off_tick = max(n.end, n.start)
-            events.append(ScheduledEvent(clock.seconds_at(n.start) - t0,
-                                         (NOTE_ON | ch, n.pitch & 0x7F, vel), n.start, ORDER_ON))
+            events.append(ScheduledEvent(clock.seconds_at(on_tick) - t0,
+                                         (NOTE_ON | ch, n.pitch & 0x7F, vel), on_tick, ORDER_ON))
             events.append(ScheduledEvent(clock.seconds_at(off_tick) - t0,
                                          (NOTE_OFF | ch, n.pitch & 0x7F, n.off_velocity & 0x7F),
                                          off_tick, ORDER_OFF if n.duration > 0 else ORDER_OFF_AFTER_ON))
@@ -406,6 +414,13 @@ class Transport:
             self.stop()
             return False
         return self.play()
+
+    def resync(self) -> None:
+        """After an edit while rolling: the sink's schedule is stale, so play
+        again from where we are. Notes sounding there restrike (chase), so a
+        held pad survives an edit to its neighbour with a blink, not a hole."""
+        if self.rolling:
+            self.play(self.position())
 
     def position(self) -> int:
         """The playhead's tick: live while rolling, where it stopped otherwise.

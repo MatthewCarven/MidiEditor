@@ -88,11 +88,11 @@ class TestSchedule:
         s = schedule(song)
         assert all(e.message[0] >= 0x80 for e in s.events)
 
-    def test_playing_from_the_middle_skips_earlier_notes_but_keeps_the_setup(self):
+    def test_playing_from_the_middle_chases_the_held_pad_and_keeps_the_setup(self):
         s = schedule(two_track_song(), start_tick=2 * BEAT)
         assert s.start_tick == 2 * BEAT
         pitches_on = [e.message[1] for e in s.events if e.is_note_on]
-        assert pitches_on == [72]                                   # the pad started earlier: not restarted
+        assert sorted(pitches_on) == [48, 72]                       # the pad is still sounding here: chased
         prelude = [e for e in s.events if e.seconds == 0.0 and e.order == ORDER_OTHER]
         raw = {e.message for e in prelude}
         assert (0xC0, 4) in raw and (0xC1, 89) in raw               # both programs
@@ -298,3 +298,26 @@ class TestReviewFindings:
         sink, why = ports.open_sink()
         assert isinstance(sink, NullSink)
         assert "rtmidi" in why and "pip install" in why
+
+
+class TestChase:
+    def test_a_note_sounding_at_the_start_restrikes_with_what_is_left(self):
+        s = schedule(two_track_song(), start_tick=2 * BEAT)
+        ons = [(e.message[1], e.seconds, e.tick) for e in s.events if e.is_note_on]
+        assert (48, 0.0, 2 * BEAT) in ons                            # the pad, from here
+        assert all(p != 60 for p, _, _ in ons)                       # the piano note ended exactly here: skipped
+        off = next(e for e in s.events if e.is_note_off and e.message[1] == 48)
+        assert off.seconds == pytest.approx(1.0) and off.tick == 4 * BEAT
+
+    def test_resync_while_rolling_plays_again_from_the_position(self):
+        clock = FakeClock()
+        sink = NullSink(clock=clock)
+        t = Transport(two_track_song(), sink)
+        t.play(0)
+        clock.advance(0.5)                                          # a beat in, at 120 bpm
+        t.resync()
+        assert t.rolling and len(sink.started) == 2
+        assert sink.schedule.start_tick == BEAT
+        t.stop()
+        t.resync()                                                  # stopped: nothing to do
+        assert len(sink.started) == 2

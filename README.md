@@ -187,9 +187,11 @@ status line says why. The sink is python-rtmidi (`pip install -e ".[audio]"`),
 one scheduler thread with absolute due times; on this machine a note goes out
 about a millisecond and a half after it is due, which the GS synth's own
 latency dwarfs. Playing from the middle of a song sends the last program change
-and controller values first, so the right instruments are in force. Edits
-while playing are fine, but the running schedule is not rewritten by them:
-stop and play again to hear a change.
+and controller values first, so the right instruments are in force, and
+notes already sounding there restrike with what is left of them (chase), so
+a seek into a held chord plays the chord. Edits while playing take effect
+at once: the schedule is rebuilt from the playhead, and a held note across
+the edit blinks rather than drops out.
 
 `seq play song.mid -b 9` does the same from the console, printing the position
 once a second; Ctrl+C releases every sounding note before exiting.

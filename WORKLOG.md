@@ -1081,3 +1081,16 @@ four-line wrapper that remembers the key signature). `ui_gui.editor` and
 moved. Done by a script that cut the definitions out by their `ast` spans
 rather than by hand; the suite did not notice, which is the point. Four
 layering tests pin it. 459 tests.
+
+### Chase, and edits while rolling
+
+2026-10-20. Two open items that are one change. `schedule()` used to skip
+every note that began before the start tick, so a seek into a held chord
+was silence until the next attack, and (the other item) an edit while
+rolling could not be heard until you stopped and played again, because
+the sink's schedule was built once. Now a note sounding at the start tick
+restrikes there with what is left of it - chase, what a DAW does - and
+`Transport.resync()` plays again from the position; both editors call it
+after every run, undo and redo. A held note across an edit blinks for a
+lead rather than dropping out. The one test that pinned "not restarted"
+now pins the chase; five tests added. 464 tests.

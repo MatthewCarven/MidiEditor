@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from midiseq.audio.sink_null import NullSink
-from midiseq.core import io_midi
+from midiseq.core import edit, io_midi
 from midiseq.ui_gui.editor import LEFT, RIGHT, Editor, TransportState, bpm_text
 from midiseq.ui_gui.grid import GridWidget
 from midiseq.ui_gui.paint import DEFAULT_THEME, Line
@@ -333,3 +333,15 @@ class TestReviewFindings:
         assert not old.rolling                                   # the old one let go of its notes
         assert abs(new.schedule.start_tick - BAR) <= 1
         assert abs(ed.transport.position() - BAR) <= TPC
+
+
+class TestEditsWhileRolling:
+    def test_an_edit_while_rolling_reschedules_from_the_position(self):
+        song, _, ed, sink, clock = make(bar=1)
+        ed.toggle_play()
+        advance_to(ed, clock, BAR)
+        ed.run(edit.DeleteNotes({song.tracks[2].notes[0].nid}))
+        assert ed.transport.rolling and len(sink.started) == 2
+        assert abs(sink.schedule.start_tick - BAR) <= 1
+        ed.undo()
+        assert len(sink.started) == 3

@@ -310,8 +310,8 @@ one layer up: **only what you actually changed changes.**
       that turns the page; `--midi-out` on `seq gui`; `seq play` headless
 - [x] Don't fire audition while transport is rolling — `Transport.audition`
       checks `sink.rolling`; deleting makes no sound
-- [ ] Open: the running schedule is not rewritten by edits during playback —
-      stop and play again. A live-updated schedule is a later feature.
+- [x] Open: the running schedule is not rewritten by edits during playback —
+      stop and play again. A live-updated schedule is a later feature. *Done 2026-10-20: edits resync from the position.*
 - [ ] Open: Windows ignores `timeBeginPeriod` for a minimised window, so a
       minimised editor can wake ~15 ms late. Nothing to do in-process.
 - [ ] Open: no loop / cycle range, no metronome, no record from a MIDI input
@@ -320,9 +320,9 @@ one layer up: **only what you actually changed changes.**
 - [x] **Review, triaged by hand (2026-10-19):** the confirmed finding fixed
       (`_sounding` is a `Counter`), and of the twenty-three unvoted, twenty
       fixed with tests and three refuted on reading. Details in the worklog.
-- [ ] Open: a seek into held notes starts nothing until the next attack.
+- [x] Open: a seek into held notes starts nothing until the next attack.
       "Chase" (restart the notes sounding at the seek point) would be the
-      feature.
+      feature. *Done 2026-10-20: chase is the rule.*
 - [x] **Ears, round two (2026-10-19):** |<, scrolling away, Space at the end
       and the port combo all passed. Matthew's two calls, both done: Space
       with nothing ahead does the |< for you, and switching the output while

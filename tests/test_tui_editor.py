@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from midiseq.audio.sink_null import NullSink
-from midiseq.core import io_midi
+from midiseq.core import edit, io_midi
 from midiseq.ui_tui.editor import Editor, normalise_key
 from midiseq.ui_tui.view import TextView
 
@@ -536,3 +536,13 @@ class TestFilesAndQuitting:
         assert not ed.want_quit
         ed.key("ctrl+q")
         assert ed.want_quit
+
+
+class TestEditsWhileRolling:
+    def test_an_edit_while_rolling_reschedules_from_the_position(self):
+        song, g, ed, sink, clock = make()
+        ed.transport.play(BAR9)
+        clock.advance(0.5)
+        ed.run(edit.DeleteNotes({find(song, *G4).nid}))
+        assert ed.transport.rolling and len(sink.started) == 2
+        assert sink.schedule.start_tick > BAR9

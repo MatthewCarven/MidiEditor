@@ -1220,3 +1220,19 @@ end_of_track to the first channel only, so the other channels closed
 their hanging notes at their own last event rather than the file's end,
 six ticks early in `the_undercaves.mid`. The split now passes every
 channel the file's end. One test. 493 tests.
+
+### The library, end to end, and a third bug that is mido's
+
+2026-10-21. With the checker linear, the whole library ran in the
+background: 40,196 files, 110 million notes, 98.3% identical, 676 that
+mido itself refuses (not MIDI, bytes out of range, key signatures with
+mode 255), 7 declined on purpose (format 2), and 18 with paired losses
+and inventions - the same events, moved. All 18 carry `unknown_meta`
+messages (Balloon Fight: 3,554 of them), and the cause is mido's: its
+reader builds an unknown meta without its delta, so everything after one
+loads early, and a file we write with the delta restored shifts again on
+the next read. The writer now parks an unknown meta at the previous
+event's tick, so nothing after it moves, and the checker compares unknown
+metas by content, since their tick is not knowable through mido. The
+original loss - what every mido-based program hears - is on the TODO
+with the fix shape (a raw walk of the track bytes). One test. 494 tests.

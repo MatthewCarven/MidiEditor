@@ -1031,3 +1031,31 @@ def test_a_note_never_released_is_closed_at_the_files_end_in_every_channel(tmp_p
     out = tmp_path / "rt.mid"
     io_midi.save(song, out)
     assert io_midi.musical_content(path)["notes"] == io_midi.musical_content(out)["notes"]
+
+
+def test_an_unknown_meta_does_not_shift_what_follows_it_on_the_next_read(tmp_path):
+    """mido reads an unknown meta's delta as zero, so a file written with one
+    would come back with everything after it early. The writer parks the
+    meta at the previous event's tick instead, and the check compares
+    unknown metas by content."""
+    import mido
+    from midiseq.core import io_midi
+    mid = mido.MidiFile(ticks_per_beat=96)
+    t = mido.MidiTrack()
+    mid.tracks.append(t)
+    t.append(mido.Message("note_on", note=60, velocity=90, time=0))
+    t.append(mido.Message("note_off", note=60, velocity=0, time=96))
+    t.append(mido.UnknownMetaMessage(17, data=bytes([255]), time=48))   # mido reads this delta as 0
+    t.append(mido.Message("note_on", note=62, velocity=90, time=48))
+    t.append(mido.Message("note_off", note=62, velocity=0, time=96))
+    path = tmp_path / "meta.mid"
+    mid.save(str(path))
+    song = io_midi.load(path)
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)
+    again = io_midi.load(out)
+    notes = lambda s: [(n.pitch, n.start, n.end) for n in s.tracks[0].notes]
+    assert notes(again) == notes(song)                                  # no further drift
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+    written = mido.MidiFile(str(out)).tracks[0]
+    assert [m.time for m in written if m.type == "unknown_meta"] == [0]

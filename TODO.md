@@ -194,6 +194,12 @@ one layer up: **only what you actually changed changes.**
       Open one with `seq check -v` and diff the event streams. *2026-10-21: not invented - released. A note_on the file never releases is closed at the track's end (the loader's rule); the checker dropped such notes, so the release looked new. The checker closes them the same way now, and a format 0 channel is handed the file's end so it closes at the right tick.*
 - [x] **Bug: tempo/meter event lost** — 15 files (Landstalker, Sonic 1, Illusion
       of Gaia, Super Mario Kart). `_dedupe` is the first suspect. *2026-10-21: it was the checker counting the model's same-tick dedupe as a loss; fixed on 2026-10-19 with `musical_content` keeping the last word per tick. Zero in these folders now.*
+- [ ] **mido reads an unknown meta's delta as zero** (its `build_meta_message` drops
+      it), so everything after such a meta loads early - in every program built on
+      mido, not just here. The writer parks unknown metas at the previous event's
+      tick so a saved file does not drift again (2026-10-21), but the original loss
+      stands: 18 of the library's 40,196 files carry one with a delta (Balloon Fight
+      has 3,554 of them). A raw walk of the track bytes would recover the deltas.
 - [ ] Maybe, later: a lenient reader for the 62 "data byte must be in range"
       files — old-game SysEx / running-status quirks that mido refuses. In the
       spirit of the thing; not a writer bug.

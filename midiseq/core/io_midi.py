@@ -320,6 +320,14 @@ def _to_mido_track(events: list[tuple], end_hint: int) -> "mido.MidiTrack":
     events = sorted(events, key=lambda e: (e[0], e[1], e[2]))
     tick = 0
     for abs_tick, _rank, _tie, msg in events:
+        if msg.type == "unknown_meta":
+            # mido reads an unknown meta's delta as zero (its build_meta_message
+            # drops it), so written with one it would shift everything after it
+            # on the next read. Parked at the previous event's tick it costs
+            # only its own position, which no reader built on mido keeps anyway.
+            msg.time = 0
+            mtrack.append(msg)
+            continue
         msg.time = abs_tick - tick
         tick = abs_tick
         mtrack.append(msg)
@@ -369,7 +377,9 @@ def musical_content(path: str | Path) -> dict:
                     notes.append((msg.channel, msg.note, start, tick, vel,
                                   msg.velocity))
             else:
-                others.append((tick, msg.type, str(msg.bytes())))
+                # An unknown meta's tick is not knowable through mido (its delta
+                # reads as zero), so it is compared by content alone.
+                others.append((0 if msg.type == "unknown_meta" else tick, msg.type, str(msg.bytes())))
         for (channel, note), starts in open_notes.items():
             # Never released: the loader closes it at the track's end, so the
             # comparison does the same rather than calling the result invented.

@@ -1053,3 +1053,10 @@ to the new one. 377 tests.
 
 Confirmed by ear the same evening, Matthew: *"Working fine."* Both window
 changes stand.
+
+### On GitHub
+
+2026-10-20. Matthew: "commit and push as you please." The repo is at
+https://github.com/MatthewCarven/MidiEditor (public); master pushed with
+everything through the gitignore tweak, and it tracks origin now. Pushes are
+part of the routine on this project from here.

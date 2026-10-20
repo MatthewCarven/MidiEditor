@@ -1198,4 +1198,4 @@ The terminal takes a mouse: a click on a square is Enter there, Shift+click
 is S, and a click on the header or the ruler puts the playhead there.
 `TextView.hit` maps a character to a square from the column positions it
 already keeps; the pane hands Textual's click to the editor the way it
-hands keys. Seven tests. 493 tests.
+hands keys. Seven tests. 492 tests.

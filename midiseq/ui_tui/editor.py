@@ -42,11 +42,10 @@ from ..core.edit import REGISTRY, Command, NoteSpec
 from ..core.history import History
 from ..core.model import DEFAULT_VELOCITY, Note, parse_pitch
 from ..core.transport import Sink, Transport
-from ..ui_gui.editor import parse_key, velocity_change
+from ..ui_common import VELOCITY_STEP, _count, build_command, parse_key, velocity_change
 from .palette import Palette, prompts_for, tui_entries
 from .view import TextView
 
-VELOCITY_STEP = 5                # Ctrl+Up/Down
 
 #: What ``?`` shows. Plain letters where the window has a chord, because a
 #: terminal only promises to deliver characters: see the module docstring.
@@ -83,51 +82,6 @@ def normalise_key(key: str, character: str | None = None) -> str:
         mods = sorted(parts[:-1], key=lambda m: _MODIFIER_ORDER.get(m, 9))
         return "+".join(mods + [parts[-1]])
     return key
-
-
-def _count(n: int, word: str = "note") -> str:
-    return f"{n} {word}{'s' if n != 1 else ''}"
-
-
-def build_command(key: str, raw: dict[str, str], nids: set[int], *, tpc: int,
-                  middle_c_octave: int, key_root: int = 0, key_scale: str = "major",
-                  ) -> tuple[Command, tuple[int, str]]:
-    """The window's ``Editor.build``, as a function: a registry key and the
-    prompt's raw strings to a command, plus the key signature to remember
-    (the diatonic moves and the snap may set it). Raises ``ValueError``
-    with a sentence when a value doesn't parse."""
-    sel = set(nids)
-    keysig = (key_root, key_scale)
-    if key == "note.delete":
-        return edit.DeleteNotes(sel), keysig
-    if key == "note.velocity":
-        return edit.SetVelocity(sel, **velocity_change(raw.get("velocity", "+10"))), keysig
-    if key == "xform.transpose.chromatic":
-        return edit.TransposeChromatic(sel, int(raw.get("semitones", "1"))), keysig
-    if key == "xform.transpose.diatonic":
-        if raw.get("key", "").strip():
-            keysig = parse_key(raw["key"])
-        return edit.TransposeDiatonic(sel, int(raw.get("degrees", "1")),
-                                      root=keysig[0], scale=keysig[1]), keysig
-    if key == "xform.invert":
-        axis_text = raw.get("axis", "").strip()
-        axis = parse_pitch(axis_text, middle_c_octave) if axis_text else None
-        return edit.Invert(sel, axis), keysig
-    if key == "xform.retrograde":
-        return edit.Retrograde(sel), keysig
-    if key == "xform.augment":
-        return edit.Augment(sel), keysig
-    if key == "xform.diminish":
-        return edit.Diminish(sel), keysig
-    if key == "xform.quantise":
-        strength = float(raw.get("strength", "100")) / 100.0
-        ends = raw.get("ends", "n").strip().lower().startswith("y")
-        return edit.Quantise(sel, tpc, strength=strength, ends=ends), keysig
-    if key == "xform.snap_to_scale":
-        if raw.get("key", "").strip():
-            keysig = parse_key(raw["key"])
-        return edit.SnapToScale(sel, root=keysig[0], scale=keysig[1]), keysig
-    raise KeyError(key)
 
 
 class Editor:

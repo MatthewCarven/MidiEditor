@@ -29,7 +29,7 @@ from ..core.grid import GridView, Zoom
 from ..core.index import SongIndex
 from ..core.model import DEFAULT_MIDDLE_C_OCTAVE, Note, Song
 from ..core.render import Matrix, Row, row_label
-from ..ui_gui.grid import beats_text, default_track
+from ..ui_common import beats_text, default_track
 
 HEADER_LINES = 2                    # the bar header and the ruler
 LANE_LINES = len(LANE_ROWS) + 2     # the lane between its two rules

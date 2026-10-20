@@ -373,6 +373,7 @@ midiseq/
     sink_null.py  swallows everything, keeps a log and a fake-able clock
     sink_rtmidi.py python-rtmidi: one scheduler thread, absolute due times, per-note release
     ports.py      which outputs exist; open one, or fall back and say why
+  ui_common.py   what both editors share: menu and palette entries, prompts, the command builder. No toolkit.
   ui_gui/        DearPyGui
     paint.py     cell matrix → rectangles, lines, labels by role. No toolkit.
     painter.py   one primitive, one draw call — takes dpg as an argument

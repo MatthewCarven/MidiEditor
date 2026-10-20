@@ -1067,3 +1067,17 @@ part of the routine on this project from here.
 day after the Shift chords went to plain letters. Next, by his word: work
 through the open TODO items, cheapest and surest first, and he will start
 asking for specific things once the list is done.
+
+### The lift
+
+2026-10-20. The terminal had been importing the palette entries, `PROMPTS`,
+`parse_key`, `velocity_change`, `default_track` and `beats_text` from the
+window's package, and carried its own copy of `Editor.build` as a function.
+That is the wrong way round: the terminal is not a kind of window. They
+live in `midiseq/ui_common.py` now, toolkit-free, with the command builder
+as the one function (`build_command`; the window's `Editor.build` is a
+four-line wrapper that remembers the key signature). `ui_gui.editor` and
+`ui_gui.grid` re-export the names they had, so nothing that imported them
+moved. Done by a script that cut the definitions out by their `ast` spans
+rather than by hand; the suite did not notice, which is the point. Four
+layering tests pin it. 459 tests.

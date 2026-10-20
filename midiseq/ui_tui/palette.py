@@ -2,9 +2,9 @@
 
 PLAN.md §12: Ctrl+P in the GUI, ``:`` in the TUI, type ``inv``, get Invert,
 the same registry behind both. The entries, the prompts a command asks
-before it runs and the parsers for what you type are the window's
-(``ui_gui/editor.py``, which has no DearPyGui in it), so the two front
-doors cannot drift apart. This module is the state machine of a one-line
+before it runs and the parsers for what you type are shared with the
+window (``ui_common.py``, which sees no toolkit), so the two front doors
+cannot drift apart. This module is the state machine of a one-line
 prompt, driven by key names so it is tested with no terminal: search, then
 one prompt per field the command needs (blank means the default), then a
 ``(key, values)`` pair for the editor to run.
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from ..ui_gui.editor import PROMPTS, MenuEntry, all_entries
+from ..ui_common import PROMPTS, MenuEntry, all_entries
 
 #: A command's prompts: ``(field, caption, default)`` each.
 Fields = list[tuple[str, str, str]]

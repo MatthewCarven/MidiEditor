@@ -20,20 +20,7 @@ from ..core.index import SongIndex
 from ..core.model import DEFAULT_MIDDLE_C_OCTAVE, Song
 from ..core.render import Matrix
 from .paint import Layout, PaintPlan, Primitive, hover_plan, plan, playhead_plan
-
-
-def default_track(song: Song) -> int:
-    """The first track with notes - the same rule ``seq cat`` uses."""
-    for i, t in enumerate(song.tracks):
-        if t.notes:
-            return i
-    return 0
-
-
-def beats_text(duration: int, ppq: int) -> str:
-    beats = duration / ppq
-    text = f"{beats:.2f}".rstrip("0").rstrip(".")
-    return f"{text or '0'} beat{'s' if beats != 1 else ''}"
+from ..ui_common import beats_text, default_track  # noqa: F401 - re-exported, as before the lift
 
 
 class GridWidget:

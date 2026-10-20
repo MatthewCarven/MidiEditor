@@ -70,96 +70,13 @@ from ..core.model import DEFAULT_VELOCITY, Note, parse_pitch
 from ..core.transport import Sink, Transport
 from .grid import GridWidget
 from .paint import Primitive, Rect, lane_bar, tick_rect
+from ..ui_common import (  # noqa: F401 - re-exported: these were this module's names until the lift
+    ACTIONS, GESTURE_ONLY, NOTE_NAMES, PROMPTS, VELOCITY_STEP, MenuEntry, _count, _entry, all_entries,
+    build_command, edit_menu, menu_sections, palette, parse_key, pitch_class, velocity_change,
+)
 
 LEFT, RIGHT = 0, 1
 EDGE_PX = 5                      # the resize grab zone at a note's right edge
-VELOCITY_STEP = 5                # Ctrl+Up/Down; Ctrl+Shift+Up/Down moves by one
-
-#: Registry entries that only make sense as gestures (or as the back half of
-#: an editor action), never as menu items.
-GESTURE_ONLY = {"note.add", "note.add_notes", "note.move", "note.resize", "note.velocities"}
-
-#: Editor-level actions that live beside the registry in the palette and the
-#: Edit menu. They aren't registry commands - some have nothing to undo, the
-#: clipboard ones run one with the editor's own state (the clipboard, the
-#: playhead) filled in - so the editor runs them by key like everything else.
-ACTIONS = [
-    ("edit.undo", "Undo", "Ctrl+Z"),
-    ("edit.redo", "Redo", "Ctrl+Y"),
-    ("edit.cut", "Cut", "Ctrl+X"),
-    ("edit.copy", "Copy", "Ctrl+C"),
-    ("edit.paste", "Paste", "Ctrl+V"),
-    ("edit.duplicate", "Duplicate", "Ctrl+D"),
-    ("edit.select_all", "Select all", "Ctrl+A"),
-    ("edit.deselect", "Deselect", "Esc"),
-    ("edit.audition", "Audition on edit (toggle)", "A"),
-]
-
-#: What to ask before running a command that takes a parameter: a list of
-#: (field, caption, default). Values come back as strings and are parsed in
-#: ``Editor.build``. Commands not listed run as they are.
-PROMPTS: dict[str, list[tuple[str, str, str]]] = {
-    "xform.transpose.chromatic": [("semitones", "Semitones (+ up, - down)", "1")],
-    "xform.transpose.diatonic": [("degrees", "Scale degrees (+ up, - down)", "1"),
-                                 ("key", "Key (C major, A minor, D harmonic minor)", "C major")],
-    "xform.invert": [("axis", "Axis note, e.g. G4 (blank: the midpoint)", "")],
-    "xform.quantise": [("strength", "Strength, percent", "100"),
-                       ("ends", "Note ends too? y/n", "n")],
-    "xform.snap_to_scale": [("key", "Key (C major, A minor, D harmonic minor)", "C major")],
-    "note.velocity": [("velocity", "Velocity: 96, +10, -10 or x0.8", "+10")],
-}
-
-NOTE_NAMES = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
-
-
-def pitch_class(text: str) -> int:
-    """``"C"`` -> 0, ``"F#"`` -> 6, ``"Bb"`` -> 10. Octave digits are ignored."""
-    t = text.strip().lower()
-    if not t or t[0] not in NOTE_NAMES:
-        raise ValueError(f"not a note name: {text!r}")
-    pc = NOTE_NAMES[t[0]]
-    for ch in t[1:]:
-        if ch == "#":
-            pc += 1
-        elif ch == "b":
-            pc -= 1
-        elif ch.isdigit() or ch == "-":
-            break
-        else:
-            raise ValueError(f"not a note name: {text!r}")
-    return pc % 12
-
-
-def parse_key(text: str) -> tuple[int, str]:
-    """``"A minor"`` -> (9, "minor"). The scale names are ``edit.SCALES``."""
-    parts = text.strip().split(None, 1)
-    if not parts:
-        raise ValueError("a key looks like 'C major' or 'A minor'")
-    root = pitch_class(parts[0])
-    scale = parts[1].strip().lower() if len(parts) > 1 else "major"
-    if scale not in edit.SCALES:
-        raise ValueError(f"unknown scale {scale!r}; one of {', '.join(edit.SCALES)}")
-    return root, scale
-
-
-def velocity_change(text: str) -> dict:
-    """``"96"`` sets, ``"+10"`` / ``"-10"`` nudge, ``"x0.8"`` scales."""
-    s = text.strip().lower().replace(" ", "")
-    if not s:
-        raise ValueError("say a velocity: 96, +10, -10 or x0.8")
-    if s[0] in "x*":
-        return {"scale": float(s[1:])}
-    if s[0] in "+-":
-        return {"delta": int(s)}
-    return {"velocity": int(s)}
-
-
-@dataclass(frozen=True)
-class MenuEntry:
-    key: str
-    label: str
-    shortcut: str | None
-    needs_prompt: bool
 
 
 @dataclass(frozen=True)
@@ -179,56 +96,6 @@ def bpm_text(bpm: float) -> str:
     microseconds per beat, so a "120" file can come back 120.00002."""
     text = f"{bpm:.1f}".rstrip("0").rstrip(".")
     return f"{text} bpm"
-
-
-def _count(n: int, word: str = "note") -> str:
-    return f"{n} {word}{'s' if n != 1 else ''}"
-
-
-def _entry(key: str, label: str, shortcut: str | None) -> MenuEntry:
-    return MenuEntry(key, label, shortcut, key in PROMPTS)
-
-
-def menu_sections() -> list[tuple[str, list[MenuEntry]]]:
-    """The Notes menu, grouped so the separator teaches the taxonomy."""
-    return [
-        (name, [_entry(s.key, s.label, s.shortcut) for s in specs if s.key not in GESTURE_ONLY])
-        for name, specs in edit.notes_menu()
-    ]
-
-
-def edit_menu() -> list[MenuEntry]:
-    """The Edit menu: the editor's own actions, then the registry's EDIT
-    commands that aren't gestures (Delete)."""
-    entries = [_entry(k, label, sc) for k, label, sc in ACTIONS]
-    entries += [_entry(s.key, s.label, s.shortcut) for s in edit.menu_model(Category.EDIT)
-                if s.key not in GESTURE_ONLY]
-    return entries
-
-
-def all_entries() -> list[MenuEntry]:
-    seen: set[str] = set()
-    out: list[MenuEntry] = []
-    for e in edit_menu() + [e for _, group in menu_sections() for e in group]:
-        if e.key not in seen:
-            seen.add(e.key)
-            out.append(e)
-    return out
-
-
-def palette(query: str) -> list[MenuEntry]:
-    """Type "inv", get Invert. Substring matches first, then words whose
-    letters appear in order, so "tsd" still finds "Transpose - scale degrees"."""
-    q = query.strip().lower()
-    entries = all_entries()
-    if not q:
-        return entries
-    def subsequence(needle: str, hay: str) -> bool:
-        it = iter(hay)
-        return all(ch in it for ch in needle)
-    direct = [e for e in entries if q in e.label.lower()]
-    loose = [e for e in entries if e not in direct and subsequence(q, e.label.lower())]
-    return direct + loose
 
 
 # --------------------------------------------------------------------------
@@ -850,40 +717,14 @@ class Editor:
     # -- the registry's door ------------------------------------------------------
 
     def build(self, key: str, raw: dict[str, str] | None = None) -> Command:
-        """Make the command for a registry key from the prompt's raw strings.
-        Raises ``ValueError`` with a sentence when a value doesn't parse."""
-        raw = raw or {}
-        sel = set(self.selection)
-        if key == "note.delete":
-            return edit.DeleteNotes(sel)
-        if key == "note.velocity":
-            return edit.SetVelocity(sel, **velocity_change(raw.get("velocity", "+10")))
-        if key == "xform.transpose.chromatic":
-            return edit.TransposeChromatic(sel, int(raw.get("semitones", "1")))
-        if key == "xform.transpose.diatonic":
-            if raw.get("key", "").strip():
-                self.key_root, self.key_scale = parse_key(raw["key"])
-            return edit.TransposeDiatonic(sel, int(raw.get("degrees", "1")),
-                                          root=self.key_root, scale=self.key_scale)
-        if key == "xform.invert":
-            axis_text = raw.get("axis", "").strip()
-            axis = parse_pitch(axis_text, self.widget.middle_c_octave) if axis_text else None
-            return edit.Invert(sel, axis)
-        if key == "xform.retrograde":
-            return edit.Retrograde(sel)
-        if key == "xform.augment":
-            return edit.Augment(sel)
-        if key == "xform.diminish":
-            return edit.Diminish(sel)
-        if key == "xform.quantise":
-            strength = float(raw.get("strength", "100")) / 100.0
-            ends = raw.get("ends", "n").strip().lower().startswith("y")
-            return edit.Quantise(sel, self._tpc, strength=strength, ends=ends)
-        if key == "xform.snap_to_scale":
-            if raw.get("key", "").strip():
-                self.key_root, self.key_scale = parse_key(raw["key"])
-            return edit.SnapToScale(sel, root=self.key_root, scale=self.key_scale)
-        raise KeyError(key)
+        """Make the command for a registry key from the prompt's raw strings,
+        remembering a key signature the prompt set. Raises ``ValueError``
+        with a sentence when a value doesn't parse."""
+        command, (self.key_root, self.key_scale) = build_command(
+            key, raw or {}, self.selection, tpc=self._tpc,
+            middle_c_octave=self.widget.middle_c_octave,
+            key_root=self.key_root, key_scale=self.key_scale)
+        return command
 
     def run_key(self, key: str, raw: dict[str, str] | None = None) -> str:
         """Run a menu or palette entry by its key. Returns the status message."""

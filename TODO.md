@@ -338,10 +338,10 @@ one layer up: **only what you actually changed changes.**
 - [x] **Test:** keyboard-only editing — Matthew's eyes and ears; what to try is at the
   end of WORKLOG.md's step 6 entry *Passed 2026-10-20: "the tui is in."*
 - Surfaced while building it:
-  - [ ] lift what both UIs share out of `ui_gui/` — the palette entries, `PROMPTS`,
+  - [x] lift what both UIs share out of `ui_gui/` — the palette entries, `PROMPTS`,
     `parse_key`, `velocity_change`, `Editor.build` (the TUI has its own copy as
     `build_command`), `default_track`, `beats_text` — into one toolkit-free module
-    both import; today `ui_tui/` imports them from `ui_gui/editor.py` and `grid.py`
+    both import; today `ui_tui/` imports them from `ui_gui/editor.py` and `grid.py` *Done 2026-10-20: `midiseq/ui_common.py`.*
   - [ ] New / Open in the terminal (Save and Save as are there; `seq tui` opens one file)
   - [ ] an editable lane in the terminal — painted only; Ctrl+Up/Down moves velocity
   - [ ] a MIDI output chooser in the terminal (`--midi-out` only; the window has a combo)

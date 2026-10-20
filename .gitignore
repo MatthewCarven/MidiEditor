@@ -24,3 +24,6 @@ log.txt
 .idea/
 .DS_Store
 Thumbs.db
+
+# Scratch copies for trying the editors (the worklog says: copy examples/bluesy.mid scratch.mid)
+scratch*.mid

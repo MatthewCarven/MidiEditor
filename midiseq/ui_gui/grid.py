@@ -35,6 +35,7 @@ class GridWidget:
         self.zoom = zoom
         self.view = GridView(song, zoom, self.index)
         self.ghosts = ghosts
+        self.scale: tuple[int, str] | None = None     # shade the rows outside this key, when set
         self.middle_c_octave = middle_c_octave
         self.layout = layout
 
@@ -93,6 +94,12 @@ class GridWidget:
     def set_ghosts(self, on: bool) -> None:
         if on != self.ghosts:
             self.ghosts = on
+            self.dirty = True
+
+    def set_scale(self, scale: tuple[int, str] | None) -> None:
+        """The scale filter: (root pitch class, scale name), or None for none."""
+        if scale != self.scale:
+            self.scale = scale
             self.dirty = True
 
     def set_middle_c(self, octave: int) -> None:
@@ -181,7 +188,7 @@ class GridWidget:
             self.song, self.track, zoom=self.zoom,
             first_bar=first_bar, last_bar=last_bar,
             low_pitch=low, high_pitch=high, ghosts=self.ghosts,
-            selection=self.selection,
+            selection=self.selection, scale=self.scale,
             middle_c_octave=self.middle_c_octave, index=self.index,
         )
         self._col_index = {c.cell: i for i, c in enumerate(self.matrix.columns)}

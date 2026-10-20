@@ -71,7 +71,7 @@ def _slice(m: Matrix, start: int, count: int) -> Matrix:
     cols = m.columns[start:start + count]
     shown = {c.bar for c in cols}
     return Matrix(
-        rows=[Row(r.pitch, r.label, r.accidental, r.cells[start:start + count], r.off_grid_flag)
+        rows=[Row(r.pitch, r.label, r.accidental, r.cells[start:start + count], r.in_scale, r.off_grid_flag)
               for r in m.rows],
         columns=cols,
         bars=[b for b in m.bars if b.number in shown],
@@ -93,6 +93,7 @@ class TextView:
         self.zoom = zoom
         self.view = GridView(song, zoom, self.index)
         self.ghosts = ghosts
+        self.scale: tuple[int, str] | None = None     # shade the rows outside this key, when set
         self.middle_c_octave = middle_c_octave
         self.lane = lane
         self.glyphs = glyphs
@@ -191,6 +192,12 @@ class TextView:
     def set_ghosts(self, on: bool) -> None:
         if on != self.ghosts:
             self.ghosts = on
+            self.dirty = True
+
+    def set_scale(self, scale: tuple[int, str] | None) -> None:
+        """The scale filter: (root pitch class, scale name), or None for none."""
+        if scale != self.scale:
+            self.scale = scale
             self.dirty = True
 
     def set_zoom(self, zoom: Zoom) -> None:
@@ -335,7 +342,7 @@ class TextView:
             first_bar=first_bar, last_bar=last_bar,
             low_pitch=low, high_pitch=high, ghosts=self.ghosts,
             selection=self.selection, middle_c_octave=self.middle_c_octave,
-            index=self.index,
+            index=self.index, scale=self.scale,
         )
         start = next((i for i, c in enumerate(m.columns) if c.cell >= first), len(m.columns) - 1)
         gutter = _gutter_width(r.label for r in m.rows)
@@ -371,6 +378,8 @@ class TextView:
         for ri, row in enumerate(m.rows):
             if row.accidental:
                 spans.append(Span(y0 + ri, 0, self.width, "accidental"))
+            if row.in_scale is False:
+                spans.append(Span(y0 + ri, 0, self.width, "out_of_scale"))
         playhead_x = None
         if self.playhead is not None:
             pi = self._col_index.get(view.tick_to_cell(self.playhead))

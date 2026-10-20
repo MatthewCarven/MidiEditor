@@ -43,8 +43,8 @@ from ..core.edit import REGISTRY, Command, NoteSpec
 from ..core.history import History
 from ..core.model import DEFAULT_VELOCITY, Note, Song, parse_pitch
 from ..core.transport import Sink, Transport
-from ..ui_common import (VELOCITY_STEP, _count, bars_around, build_command, empty_song, loop_text,
-                         parse_key, velocity_change)
+from ..ui_common import (VELOCITY_STEP, _count, bars_around, build_command, empty_song, key_text,
+                         loop_text, parse_key, velocity_change)
 from .palette import Palette, prompts_for, tui_entries
 from .view import TextView
 
@@ -68,6 +68,7 @@ KEY_HELP = [
     "Shift+P           play from the cursor         X / C / V / D     cut, copy, paste at the cursor, duplicate",
     "P                 playhead to the cursor       Ctrl+S            save",
     "A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)",
+    "K                 scale filter: shade the rows outside the key (Key... sets it)",
     "L                 loop: the selection's bars, or the cursor's; L again: off",
     ":                 the command palette          ?                 this table",
 ]
@@ -101,6 +102,7 @@ class Editor:
         self.palette = Palette(tui_entries, prompts_for)
         self.path = path
         self.key_root, self.key_scale = 0, "major"   # for diatonic moves; C major until told
+        self.scale_filter = False                    # K: shade the rows outside the key
         self.saved_depth = 0
         self.message = ""
         self.quit_armed = False
@@ -250,6 +252,29 @@ class Editor:
             return False
         return True
 
+    def set_key(self, text: str) -> str:
+        """Key...: the key signature the diatonic moves, the snap and the
+        scale filter use."""
+        try:
+            self.key_root, self.key_scale = parse_key(text)
+        except ValueError as exc:
+            self.message = f"Key: {exc}"
+            return self.message
+        self._apply_scale()
+        self.message = f"Key {key_text(self.key_root, self.key_scale)}"
+        return self.message
+
+    def toggle_scale_filter(self) -> str:
+        """K: shade the rows outside the key, or stop."""
+        self.scale_filter = not self.scale_filter
+        self._apply_scale()
+        self.message = (f"Scale filter: {key_text(self.key_root, self.key_scale)}"
+                        if self.scale_filter else "Scale filter off")
+        return self.message
+
+    def _apply_scale(self) -> None:
+        self.grid.set_scale((self.key_root, self.key_scale) if self.scale_filter else None)
+
     def toggle_loop(self) -> str:
         """L: a loop over the selection's bars, else the cursor's bar; L
         again turns it off."""
@@ -332,6 +357,9 @@ class Editor:
             return True
         if name == "l":
             self.toggle_loop()
+            return True
+        if name == "k":
+            self.toggle_scale_filter()
             return True
 
         # -- editing at the cursor
@@ -798,6 +826,10 @@ class Editor:
         if key == "edit.audition":
             self.toggle_audition()
             return self.message
+        if key == "view.key":
+            return self.set_key(raw.get("key", ""))
+        if key == "view.scale_filter":
+            return self.toggle_scale_filter()
         if key == "edit.cut":
             return self.cut()
         if key == "edit.copy":
@@ -817,6 +849,7 @@ class Editor:
             command, (self.key_root, self.key_scale) = build_command(
                 key, raw, nids, tpc=self._tpc, middle_c_octave=self.grid.middle_c_octave,
                 key_root=self.key_root, key_scale=self.key_scale)
+            self._apply_scale()
         except ValueError as exc:
             self.message = f"{label}: {exc}"
             return self.message
@@ -833,6 +866,8 @@ class Editor:
             parts.append("audition off")
         if self.transport.loop is not None:
             parts.append(f"loop {loop_text(self.grid.view.bars, self.transport.loop)}")
+        if self.scale_filter:
+            parts.append(f"scale {key_text(self.key_root, self.key_scale)}")
         if self.silent and self.sink_note:
             parts.append(self.sink_note)
         if self.history.can_undo:

@@ -55,6 +55,13 @@ ACTIONS = [
     ("edit.audition", "Audition on edit (toggle)", "A"),
 ]
 
+#: The View menu's entries that both editors share (the rest of that menu
+#: is the window's own: zooms, ghosts, the track, middle C).
+VIEW_ACTIONS = [
+    ("view.key", "Key...", None),
+    ("view.scale_filter", "Scale filter (toggle)", "K"),
+]
+
 #: What to ask before running a command that takes a parameter: a list of
 #: (field, caption, default). Values come back as strings and are parsed in
 #: ``Editor.build``. Commands not listed run as they are.
@@ -69,6 +76,7 @@ PROMPTS: dict[str, list[tuple[str, str, str]]] = {
                        ("velocity", "Velocity either way (0: none)", "8")],
     "xform.snap_to_scale": [("key", "Key (C major, A minor, D harmonic minor)", "C major")],
     "note.velocity": [("velocity", "Velocity: 96, +10, -10 or x0.8", "+10")],
+    "view.key": [("key", "Key (C major, A minor, D harmonic minor)", "C major")],
 }
 
 NOTE_NAMES = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
@@ -156,7 +164,8 @@ def edit_menu() -> list[MenuEntry]:
 def all_entries() -> list[MenuEntry]:
     seen: set[str] = set()
     out: list[MenuEntry] = []
-    for e in edit_menu() + [e for _, group in menu_sections() for e in group]:
+    view = [_entry(k, label, sc) for k, label, sc in VIEW_ACTIONS]
+    for e in edit_menu() + [e for _, group in menu_sections() for e in group] + view:
         if e.key not in seen:
             seen.add(e.key)
             out.append(e)
@@ -261,3 +270,21 @@ def loop_text(bars, loop: tuple[int, int] | None) -> str:
     a = bars.bar_containing(loop[0]).number
     b = bars.bar_containing(loop[1] - 1).number
     return f"bar {a}" if a == b else f"bars {a}-{b}"
+
+
+PITCH_CLASS_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+def key_text(root: int, scale: str) -> str:
+    """``A minor``, for a status line."""
+    return f"{PITCH_CLASS_NAMES[root % 12]} {scale}"
+
+
+def entry_label(key: str) -> str:
+    """A prompt's title: the registry's label, or an action's, without the dots."""
+    if key in edit.REGISTRY:
+        return edit.REGISTRY[key].label.rstrip(".…")
+    for k, label, _ in ACTIONS + VIEW_ACTIONS:
+        if k == key:
+            return label.rstrip(".…")
+    return key

@@ -373,3 +373,15 @@ class TestLoop:
         clock.advance(60.0)                                      # well past the loop's end
         ed.frame()
         assert len(sink.started) == 2 and w.tick_visible(start)  # wrapped, and the view came back
+
+
+class TestScaleFilter:
+    def test_k_shades_the_rows_outside_the_key_and_key_sets_it(self):
+        _, w, ed, _, _ = make(bar=9)
+        assert ed.key("k") and w.scale == (0, "major") and "scale C major" in ed.status_tail()
+        assert ed.run_key("view.key", {"key": "A minor"}) == "Key A minor" and w.scale == (9, "minor")
+        w.build()
+        assert any(r.in_scale is False for r in w.matrix.rows)
+        ed.key("k")
+        assert w.scale is None and "scale" not in ed.status_tail()
+        assert ed.run_key("view.key", {"key": "H sharp"}).startswith("Key:")

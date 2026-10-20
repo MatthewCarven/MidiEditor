@@ -52,3 +52,10 @@ def test_autosave_lands_beside_the_song_or_in_the_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     untitled = ui_common.autosave_path(None)
     assert untitled.name == "untitled.autosave.mid" and untitled.parent.resolve() == tmp_path.resolve()
+
+
+def test_the_view_entries_are_in_the_palette_with_a_prompt_for_the_key():
+    keys = {e.key: e for e in ui_common.all_entries()}
+    assert keys["view.key"].needs_prompt and not keys["view.scale_filter"].needs_prompt
+    assert ui_common.entry_label("view.key") == "Key" and ui_common.entry_label("xform.invert") == "Invert"
+    assert ui_common.key_text(9, "minor") == "A minor"

@@ -542,3 +542,16 @@ class TestHumanise:
         assert [(n.start, n.velocity) for n in song.tracks[0].notes] == before
         assert edit.REGISTRY["xform.humanise"].category is edit.Category.INDEPENDENT
         assert edit.Humanise([1], timing=0, velocity=0, seed=3).plan(song) is not None
+
+
+class TestScaleFilter:
+    def test_rows_know_whether_they_are_in_the_key(self):
+        song = song_with([(60, 0, PPQ)])
+        matrix = render(song, 0, low_pitch=60, high_pitch=71, ghosts=False, scale=(0, "major"))
+        flags = {r.pitch: r.in_scale for r in matrix.rows}
+        assert flags[60] and flags[62] and flags[71] and not flags[61] and not flags[70]
+        plain = render(song, 0, low_pitch=60, high_pitch=62, ghosts=False)
+        assert all(r.in_scale is None for r in plain.rows)
+        drums = song_with([(38, 0, PPQ)], channel=9)
+        shaded = render(drums, 0, low_pitch=38, high_pitch=40, ghosts=False, scale=(0, "major"))
+        assert all(r.in_scale is None for r in shaded.rows)             # a drum track has no key

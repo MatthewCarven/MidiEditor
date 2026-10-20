@@ -101,7 +101,9 @@ midiseq gui` or `python -m midiseq.ui_gui` do the same). It shows one track
 with the others as grey ghosts, the ruler with the meter where it changes, the
 `~` flag on approximate rows, and the velocity lane. Hover a square and the
 status line names it: pitch, MIDI number, bar:beat.subdivision, length,
-velocity.
+velocity. K shades the rows outside the key, so a line in A minor reads against
+its scale; View > Key... sets the key, and the diatonic moves and Snap to
+scale set it too.
 
 ```
 wheel                 scroll pitches        Shift+wheel        scroll time
@@ -112,6 +114,7 @@ Tab / Shift+Tab       next / previous track G                  ghosts on/off
 F                     fit the pitch range   + / -              cell width
 Ctrl+= / Ctrl+-       finer / coarser grid  File > Open        another file
 L                     loop: the selection's bars, or the playhead's; L again: off
+K                     scale filter: shade the rows outside the key (View > Key... sets it)
 ```
 
 Two zooms, deliberately on different hands. **Cell width** (Ctrl+wheel, `+`
@@ -240,6 +243,7 @@ G / F             ghosts on/off / fit pitches  Ctrl+A / Esc      select the trac
 Space             play / stop                  Ctrl+Z / Ctrl+Y   undo / redo
 Shift+P           play from the cursor         X / C / V / D     cut, copy, paste at the cursor, duplicate
 L                 loop: the selection's bars, or the cursor's; L again: off
+K                 scale filter: shade the rows outside the key (Key... in the palette sets it)
 P                 playhead to the cursor       Ctrl+S            save
 A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)
 :                 the command palette          ?                 this table

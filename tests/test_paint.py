@@ -220,3 +220,14 @@ def test_loop_plan_is_a_band_across_the_ruler_clipped_to_the_grid():
     assert loop_plan(layout, first_cell, tpc, (0, 100 * 120), cols) == []        # off to the left
     [clipped] = loop_plan(layout, first_cell, tpc, (0, 999 * 120), cols)
     assert clipped.x0 == layout.gutter_w and clipped.x1 == layout.gutter_w + cols * layout.cell_w
+
+
+def test_rows_outside_the_key_are_shaded_and_their_labels_dimmed():
+    from midiseq.core import io_midi
+    from midiseq.core.render import render
+    song = io_midi.load(BLUESY)
+    matrix = render(song, 2, first_bar=9, last_bar=9, low_pitch=60, high_pitch=62, ghosts=False,
+                    scale=(0, "major"))
+    p = plan(matrix, Layout(), first_cell=0, width=WIDTH, height=HEIGHT)
+    roles = {item.role for item in p.items}
+    assert "out_of_scale_row" in roles and "row_label_out_of_scale" in roles

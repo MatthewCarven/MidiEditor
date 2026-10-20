@@ -1156,3 +1156,20 @@ wrap to a loop start that has scrolled off screen brings the view back.
 The gap at the wrap is one frame plus a lead; a sample-tight loop would
 need the sink to loop by itself, which can wait for ears. Six tests. 477
 tests.
+
+### The scale filter, and a key the window never heard
+
+2026-10-21. The renderer marks each row in or out of a key when asked
+(`render(..., scale=(root, name))`; `Row.in_scale`, None without a filter
+and for drum tracks). The window shades those rows darker still than the
+accidentals and dims their labels; the terminal gives them a role of their
+own. K toggles it in both editors; **Key...** sets the key signature by hand
+(View menu in the window, the palette in both), and the diatonic moves and
+Snap to scale keep setting it as they did, so the filter follows them. The
+View menu's check and the K key are two doors on one flag, like audition.
+`VIEW_ACTIONS` in `ui_common` is where the shared View entries live, and
+`entry_label` lets the window prompt for a non-registry entry.
+
+Found on the way: the window's key table had no L, so the loop key shipped
+the day before never reached the editor there (the test drove the editor
+directly). K and L are in the table now. Six tests. 483 tests.

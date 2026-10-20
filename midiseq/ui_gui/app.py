@@ -72,7 +72,7 @@ from ..core.model import (
     Song,
     Track,
 )
-from ..ui_common import autosave, autosave_path, empty_song
+from ..ui_common import autosave, autosave_path, empty_song, entry_label
 from .editor import (
     PROMPTS, Editor, MenuEntry, TransportState, edit_menu, menu_sections, palette,
 )
@@ -99,6 +99,7 @@ POSITION_TEXT = "midiseq_position"
 TEMPO_TEXT = "midiseq_tempo"
 AUDITION_CHECK = "midiseq_audition_check"
 OUTPUT_COMBO = "midiseq_output"
+SCALE_ITEM = "midiseq_scale_filter"
 STATUS = "midiseq_status"
 TRACK_MENU = "midiseq_track_menu"
 GHOSTS_ITEM = "midiseq_ghosts_item"
@@ -161,6 +162,7 @@ _KEY_SPECS = {
     "minus": ("mvKey_Minus",), "subtract": ("mvKey_Subtract",),
     "period": ("mvKey_Period",), "comma": ("mvKey_Comma",),
     "a": ("mvKey_A",), "c": ("mvKey_C",), "d": ("mvKey_D",), "f": ("mvKey_F",), "g": ("mvKey_G",),
+    "k": ("mvKey_K",), "l": ("mvKey_L",),
     "n": ("mvKey_N",), "o": ("mvKey_O",), "p": ("mvKey_P",), "q": ("mvKey_Q",), "s": ("mvKey_S",),
     "v": ("mvKey_V",), "x": ("mvKey_X",), "y": ("mvKey_Y",), "z": ("mvKey_Z",),
 }
@@ -171,7 +173,7 @@ for _name, _attrs in _KEY_SPECS.items():
         KEY_NAMES.setdefault(_code, _name)
 
 #: Keys that act once per press, however long they're held. Arrows repeat.
-ONE_SHOT = {"tab", "f", "g", "q", "a", "c", "d", "n", "o", "p", "s", "v", "x", "y", "z",
+ONE_SHOT = {"tab", "f", "g", "q", "a", "c", "d", "k", "l", "n", "o", "p", "s", "v", "x", "y", "z",
             "plus", "add", "minus", "subtract", "period", "comma", "escape", "delete",
             "backspace", "enter", "space"}
 
@@ -267,6 +269,11 @@ class GridApp:
                                       callback=lambda s, a: self.widget.set_ghosts(bool(a)))
                     dpg.add_menu_item(label="Fit pitch range    F",
                                       callback=lambda: self.widget.fit_pitch_range())
+                    dpg.add_separator()
+                    dpg.add_menu_item(label="Key...", callback=self._on_entry, user_data="view.key")
+                    dpg.add_menu_item(label="Scale filter    K", check=True, tag=SCALE_ITEM,
+                                      default_value=False, callback=self._on_entry,
+                                      user_data="view.scale_filter")
                     dpg.add_separator()
                     with dpg.menu(label="Track    Tab", tag=TRACK_MENU):
                         pass
@@ -374,6 +381,7 @@ class GridApp:
         self.editor = Editor(widget, self.sink)
         self.editor.transport.audition_enabled = audition
         self._sync_audition_check()
+        self._sync_scale_check()
         self._rebuild_track_menu()
         self._update_title()
 
@@ -470,10 +478,11 @@ class GridApp:
         else:
             self.flash(self.editor.run_key(key))
             self._sync_audition_check()
+            self._sync_scale_check()
 
     def _prompt(self, key: str) -> None:
-        if not self.editor.selection:
-            self.flash(f"{REGISTRY[key].label.rstrip('.')}: nothing selected")
+        if key in REGISTRY and not self.editor.selection:
+            self.flash(f"{entry_label(key)}: nothing selected")
             return
         self._close_modal()
         fields = PROMPTS[key]
@@ -483,7 +492,7 @@ class GridApp:
             self._close_modal()
             self.flash(self.editor.run_key(key, raw))
 
-        with dpg.window(tag=PROMPT, label=REGISTRY[key].label.rstrip("."), modal=True,
+        with dpg.window(tag=PROMPT, label=entry_label(key), modal=True,
                         autosize=True, no_resize=True, pos=(380, 220),
                         on_close=lambda: self._close_modal()):
             for name, caption, default in fields:
@@ -564,6 +573,12 @@ class GridApp:
         for tag in (AUDITION_ITEM, AUDITION_CHECK):
             if dpg.does_item_exist(tag) and dpg.get_value(tag) != on:
                 dpg.set_value(tag, on)
+
+    def _sync_scale_check(self) -> None:
+        """The View menu's check and the K key are two doors on one flag."""
+        on = self.editor.scale_filter
+        if dpg.does_item_exist(SCALE_ITEM) and dpg.get_value(SCALE_ITEM) != on:
+            dpg.set_value(SCALE_ITEM, on)
 
     def _toggle_play(self) -> None:
         self.editor.toggle_play()
@@ -669,6 +684,7 @@ class GridApp:
             self.open_palette()
         elif self.editor.key(name, shift=shift, ctrl=ctrl):
             self._sync_audition_check()
+            self._sync_scale_check()
         elif name == "left":
             w.scroll_bars(-1) if ctrl else w.scroll_cells(-1)
         elif name == "right":
@@ -753,6 +769,7 @@ class GridApp:
             dpg.set_value(POSITION_TEXT, state.position)
             dpg.set_value(TEMPO_TEXT, state.tempo)
         self._sync_audition_check()
+        self._sync_scale_check()
 
     def frame(self) -> None:
         w, ed = self.widget, self.editor

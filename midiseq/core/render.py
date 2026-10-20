@@ -18,6 +18,7 @@ from enum import Enum
 
 from .grid import Bar, GridView, Zoom
 from .index import SongIndex
+from .edit import SCALES
 from .model import (
     DEFAULT_MIDDLE_C_OCTAVE,
     Song,
@@ -119,6 +120,7 @@ class Row:
     label: str
     accidental: bool        # shaded, so the black-key pattern reads at a glance
     cells: list[Cell]
+    in_scale: bool | None = None  # under a scale filter: in the key, or not; None without one
     off_grid_flag: bool = False   # the `~` gutter mark — "this row is drawn approximately"
 
 
@@ -202,11 +204,14 @@ def render(
     middle_c_octave: int = DEFAULT_MIDDLE_C_OCTAVE,
     occupied_rows_only: bool = False,
     index: SongIndex | None = None,
+    scale: tuple[int, str] | None = None,
 ) -> Matrix:
     """Build the cell-state matrix for one track.
 
     ``ghosts`` draws the other tracks faintly behind this one — context you can
     see but can't accidentally edit.
+    ``scale`` (root pitch class, scale name) marks each row in or out of that
+    key, for the views to shade; a drum track has no key.
     """
     if not song.tracks:
         raise ValueError("song has no tracks")
@@ -282,6 +287,8 @@ def render(
             label=row_label(p, track.is_drums, middle_c_octave),
             accidental=is_accidental(p),
             cells=[Cell() for _ in columns],
+            in_scale=(None if scale is None or track.is_drums
+                      else ((p - scale[0]) % 12) in SCALES.get(scale[1], ())),
         )
         for p in pitches
     ]

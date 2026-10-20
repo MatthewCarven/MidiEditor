@@ -362,7 +362,7 @@ one layer up: **only what you actually changed changes.**
 
 - [x] Transformations exist as commands already (transpose ×2, invert, retrograde,
       augment/diminish, quantise, snap to scale) — they just have no UI yet
-- [ ] Scale filter
+- [x] Scale filter. *2026-10-21: K in both editors shades the rows outside the key; Key... (View menu, palette) sets it, and so do the diatonic moves.*
 - [x] Drum name rows for ch10 (names in `render.GM_DRUMS`). *Rendered since step 2 in every view, as the short GM names (Kick, Snr, HH-c), which fit every gutter; checked 2026-10-20.*
 - [x] Humanise. *2026-10-20: `xform.humanise`, timing and velocity either way, seeded so undo and redo agree; both editors have it through the registry.*
 - [ ] Beginner profile — solfège labels, vocal-range shading

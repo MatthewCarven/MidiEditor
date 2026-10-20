@@ -600,3 +600,13 @@ class TestLoop:
         assert ed.key("l") and ed.transport.loop == (BAR9, BAR9 + BAR)
         assert "loop bar 9" in ed.status_tail()
         assert ed.run_key("transport.loop") == "Loop off" and ed.transport.loop is None
+
+
+class TestScaleFilter:
+    def test_k_shades_the_rows_outside_the_key_and_the_palette_sets_it(self):
+        _, g, ed, _, _ = make()
+        assert ed.key("k") and g.scale == (0, "major") and "scale C major" in ed.status_tail()
+        assert ed.run_key("view.key", {"key": "A minor"}) == "Key A minor" and g.scale == (9, "minor")
+        assert any(s.role == "out_of_scale" for s in g.build().spans)
+        ed.key("k")
+        assert g.scale is None

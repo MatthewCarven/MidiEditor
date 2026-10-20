@@ -197,11 +197,13 @@ LANE_MARKS = ("pp", "p", "mf", "f")
 DEFAULT_THEME: dict[str, tuple[int, int, int, int]] = {
     "bg": (24, 24, 28, 255),
     "accidental_row": (36, 36, 44, 255),
+    "out_of_scale_row": (22, 22, 28, 255),   # under a scale filter: not in the key
     "bar_line": (96, 96, 110, 255),
     "beat_line": (52, 52, 62, 255),
     "ruler_text": (190, 190, 200, 255),
     "row_label": (190, 190, 200, 255),
     "row_label_accidental": (120, 120, 135, 255),
+    "row_label_out_of_scale": (80, 80, 95, 255),
     "off_grid": (255, 200, 80, 255),
     "note_soft": (140, 180, 90, 255),
     "note_medium": (230, 170, 60, 255),
@@ -311,7 +313,11 @@ def plan(matrix: Matrix, layout: Layout, *, first_cell: int,
 
     # Accidental rows: one wide rectangle each, under everything.
     for ri in range(rows):
-        if matrix.rows[ri].accidental:
+        row = matrix.rows[ri]
+        if row.in_scale is False:
+            y = y_of(ri)
+            items.append(Rect(layout.gutter_w, y, grid_right, y + rh, "out_of_scale_row"))
+        elif row.accidental:
             y = y_of(ri)
             items.append(Rect(layout.gutter_w, y, grid_right, y + rh, "accidental_row"))
 
@@ -387,7 +393,8 @@ def plan(matrix: Matrix, layout: Layout, *, first_cell: int,
         row = matrix.rows[ri]
         y = y_of(ri)
         if rh >= 11 or ri % 2 == 0:
-            role = "row_label_accidental" if row.accidental else "row_label"
+            role = ("row_label_out_of_scale" if row.in_scale is False
+                    else "row_label_accidental" if row.accidental else "row_label")
             items.append(Label(6, y, row.label, role, 12))
         if row.off_grid_flag:
             items.append(Label(layout.gutter_w - 12, y, "~", "off_grid", 13))

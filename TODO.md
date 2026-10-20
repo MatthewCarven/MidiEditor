@@ -316,7 +316,9 @@ one layer up: **only what you actually changed changes.**
       minimised editor can wake ~15 ms late. Nothing to do in-process.
 - [x] Loop range. *2026-10-20: L in both editors, over the selection's bars or the
       current bar; the transport wraps with a stop and a play.*
-- [ ] Open: no metronome, no record from a MIDI input
+- [x] Metronome. *2026-10-21: M in both editors; wood-block clicks on channel 10 ride
+      the schedule, so they stop with the song.*
+- [ ] Open: no record from a MIDI input
 - [x] **Test — Matthew's ears, 2026-10-19: "working perfectly".** Sound,
       latency and audition all passed in one go.
 - [x] **Review, triaged by hand (2026-10-19):** the confirmed finding fixed

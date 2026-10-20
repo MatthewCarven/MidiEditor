@@ -348,3 +348,25 @@ class TestLoop:
         assert all(e.tick < BEAT for e in sink.schedule.events if e.is_note_on)
         t.set_loop((BEAT, BEAT))
         assert t.loop is None
+
+
+class TestMetronome:
+    def test_clicks_fall_on_every_beat_with_an_accent_on_the_downbeat(self):
+        s = schedule(two_track_song(), metronome=True)
+        clicks = [(e.tick, e.message[1], e.message[2])
+                  for e in s.events if e.is_note_on and e.message[0] & 0x0F == 9]
+        assert [t for t, _, _ in clicks] == [0, BEAT, 2 * BEAT, 3 * BEAT]
+        assert clicks[0][1] != clicks[1][1] and clicks[0][2] > clicks[1][2]   # its own sound, and louder
+        offs = [e for e in s.events if e.is_note_off and e.message[0] & 0x0F == 9]
+        assert len(offs) == 4 and offs[0].tick == PPQ // 8
+        assert schedule(two_track_song(), 8 * BEAT, metronome=True).is_empty   # no notes: no clicks either
+
+    def test_the_metronome_takes_effect_while_rolling(self):
+        clock = FakeClock()
+        sink = NullSink(clock=clock)
+        t = Transport(two_track_song(), sink)
+        t.play(0)
+        t.set_metronome(True)
+        assert len(sink.started) == 2 and any(e.message[0] & 0x0F == 9 for e in sink.schedule.events)
+        t.set_metronome(False)
+        assert len(sink.started) == 3 and not any(e.message[0] & 0x0F == 9 for e in sink.schedule.events)

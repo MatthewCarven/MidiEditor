@@ -1172,4 +1172,16 @@ View menu's check and the K key are two doors on one flag, like audition.
 
 Found on the way: the window's key table had no L, so the loop key shipped
 the day before never reached the editor there (the test drove the editor
-directly). K and L are in the table now. Six tests. 483 tests.
+directly). K and L are in the table now. Six tests. 482 tests.
+
+### A metronome
+
+2026-10-21. `schedule(..., metronome=True)` adds a click on every beat
+from the start to the last release: GM wood blocks on channel 10, the
+downbeat its own sound and louder, an eighth of a beat long, walked out
+of the bar map so a 3/4 bar gets three. It rides the same schedule as the
+notes, after they have decided there is something to play, so it starts
+and stops with the song and never clicks over silence. `Transport.
+metronome` flips it, from now if rolling; M in both editors, a check in
+the window's View menu, `click` in the status line. The window's key
+table gains M. Four tests. 486 tests.

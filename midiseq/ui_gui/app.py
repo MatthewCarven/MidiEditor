@@ -100,6 +100,7 @@ TEMPO_TEXT = "midiseq_tempo"
 AUDITION_CHECK = "midiseq_audition_check"
 OUTPUT_COMBO = "midiseq_output"
 SCALE_ITEM = "midiseq_scale_filter"
+METRONOME_ITEM = "midiseq_metronome"
 STATUS = "midiseq_status"
 TRACK_MENU = "midiseq_track_menu"
 GHOSTS_ITEM = "midiseq_ghosts_item"
@@ -162,7 +163,7 @@ _KEY_SPECS = {
     "minus": ("mvKey_Minus",), "subtract": ("mvKey_Subtract",),
     "period": ("mvKey_Period",), "comma": ("mvKey_Comma",),
     "a": ("mvKey_A",), "c": ("mvKey_C",), "d": ("mvKey_D",), "f": ("mvKey_F",), "g": ("mvKey_G",),
-    "k": ("mvKey_K",), "l": ("mvKey_L",),
+    "k": ("mvKey_K",), "l": ("mvKey_L",), "m": ("mvKey_M",),
     "n": ("mvKey_N",), "o": ("mvKey_O",), "p": ("mvKey_P",), "q": ("mvKey_Q",), "s": ("mvKey_S",),
     "v": ("mvKey_V",), "x": ("mvKey_X",), "y": ("mvKey_Y",), "z": ("mvKey_Z",),
 }
@@ -173,7 +174,7 @@ for _name, _attrs in _KEY_SPECS.items():
         KEY_NAMES.setdefault(_code, _name)
 
 #: Keys that act once per press, however long they're held. Arrows repeat.
-ONE_SHOT = {"tab", "f", "g", "q", "a", "c", "d", "k", "l", "n", "o", "p", "s", "v", "x", "y", "z",
+ONE_SHOT = {"tab", "f", "g", "q", "a", "c", "d", "k", "l", "m", "n", "o", "p", "s", "v", "x", "y", "z",
             "plus", "add", "minus", "subtract", "period", "comma", "escape", "delete",
             "backspace", "enter", "space"}
 
@@ -274,6 +275,9 @@ class GridApp:
                     dpg.add_menu_item(label="Scale filter    K", check=True, tag=SCALE_ITEM,
                                       default_value=False, callback=self._on_entry,
                                       user_data="view.scale_filter")
+                    dpg.add_menu_item(label="Metronome    M", check=True, tag=METRONOME_ITEM,
+                                      default_value=False, callback=self._on_entry,
+                                      user_data="transport.metronome")
                     dpg.add_separator()
                     with dpg.menu(label="Track    Tab", tag=TRACK_MENU):
                         pass
@@ -575,10 +579,12 @@ class GridApp:
                 dpg.set_value(tag, on)
 
     def _sync_scale_check(self) -> None:
-        """The View menu's check and the K key are two doors on one flag."""
-        on = self.editor.scale_filter
-        if dpg.does_item_exist(SCALE_ITEM) and dpg.get_value(SCALE_ITEM) != on:
-            dpg.set_value(SCALE_ITEM, on)
+        """The View menu's checks and their keys (K, M) are two doors on one
+        flag each."""
+        for tag, on in ((SCALE_ITEM, self.editor.scale_filter),
+                        (METRONOME_ITEM, self.editor.transport.metronome)):
+            if dpg.does_item_exist(tag) and dpg.get_value(tag) != on:
+                dpg.set_value(tag, on)
 
     def _toggle_play(self) -> None:
         self.editor.toggle_play()

@@ -60,6 +60,7 @@ ACTIONS = [
 VIEW_ACTIONS = [
     ("view.key", "Key...", None),
     ("view.scale_filter", "Scale filter (toggle)", "K"),
+    ("transport.metronome", "Metronome (toggle)", "M"),
 ]
 
 #: What to ask before running a command that takes a parameter: a list of

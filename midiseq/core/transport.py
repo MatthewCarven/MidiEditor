@@ -31,6 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence
 
+from .grid import BarMap
 from .model import Note, Song
 
 NOTE_OFF = 0x80
@@ -46,6 +47,12 @@ ALL_NOTES_OFF = 123
 #: controllers) before the notes they are meant for; a zero-length note's
 #: release *after* its own attack, or it is released before it sounds.
 ORDER_OFF, ORDER_OTHER, ORDER_ON, ORDER_OFF_AFTER_ON = 0, 1, 2, 3
+
+#: The metronome: GM wood blocks on the drum channel, the downbeat its own
+#: sound and louder, each click an eighth of a beat long.
+CLICK_CHANNEL = 9
+CLICK_DOWNBEAT = (76, 110)     # High Wood Block
+CLICK_BEAT = (77, 85)          # Low Wood Block
 
 
 @dataclass(frozen=True)
@@ -267,7 +274,8 @@ def _channel_bytes(message) -> tuple[int, ...] | None:
     return raw if raw else None
 
 
-def schedule(song: Song, start_tick: int = 0, end_tick: int | None = None) -> Schedule:
+def schedule(song: Song, start_tick: int = 0, end_tick: int | None = None, *,
+             metronome: bool = False) -> Schedule:
     """Every sendable event from ``start_tick`` (inclusive) to ``end_tick``
     (exclusive, default: the end), as raw bytes with seconds relative to the
     start, in the order a sink should send them.
@@ -323,6 +331,29 @@ def schedule(song: Song, start_tick: int = 0, end_tick: int | None = None) -> Sc
     if not any(e.order == ORDER_ON for e in events):
         return Schedule([], start_tick, start_tick, 0.0)    # set-up alone is nothing to play
 
+    if metronome:
+        # Clicks on every beat from the start to the last release (or the
+        # end asked for), after the notes have decided there is something
+        # to play: a click track alone is not a song.
+        stop = max(e.tick for e in events)
+        if end_tick is not None:
+            stop = min(stop, end_tick)
+        bars = BarMap(song)
+        bar = bars.bar_containing(start_tick)
+        click_len = max(1, song.ppq // 8)
+        while bar.start_tick < stop:
+            per_beat = max(1, bar.ticks // bar.beats())
+            for b in range(bar.beats()):
+                tick = bar.start_tick + b * per_beat
+                if tick < start_tick or tick >= stop:
+                    continue
+                pitch, vel = CLICK_DOWNBEAT if b == 0 else CLICK_BEAT
+                events.append(ScheduledEvent(clock.seconds_at(tick) - t0,
+                                             (NOTE_ON | CLICK_CHANNEL, pitch, vel), tick, ORDER_ON))
+                events.append(ScheduledEvent(clock.seconds_at(tick + click_len) - t0,
+                                             (NOTE_OFF | CLICK_CHANNEL, pitch, 0), tick + click_len, ORDER_OFF))
+            bar = bars.bar(bar.number + 1)
+
     # The prelude goes in front: a set-up message the file has *at* the start
     # tick must have the last word over the stale value folded from before it,
     # and the sort is stable.
@@ -351,6 +382,7 @@ class Transport:
         self.song = song
         self.sink = sink
         self.audition_enabled = True
+        self.metronome = False
         self.playhead = 0
         self.loop: tuple[int, int] | None = None   # (start_tick, end_tick), end exclusive
         self._looping = False                       # a loop is set and play() honoured it
@@ -394,7 +426,7 @@ class Transport:
         start = self.position() if from_tick is None else max(0, from_tick)
         self.playhead = start
         end = self.loop[1] if self.loop is not None and start < self.loop[1] else None
-        sched = schedule(self.song, start, end)
+        sched = schedule(self.song, start, end, metronome=self.metronome)
         self._looping = self.loop is not None
         if sched.is_empty:
             self._schedule = None
@@ -420,6 +452,12 @@ class Transport:
             self.stop()
             return False
         return self.play()
+
+    def set_metronome(self, on: bool) -> None:
+        """A click on every beat, from now if rolling."""
+        self.metronome = on
+        if self.rolling:
+            self.resync()
 
     def set_loop(self, loop: tuple[int, int] | None) -> None:
         """A loop range (end exclusive), or None for none. Takes effect at

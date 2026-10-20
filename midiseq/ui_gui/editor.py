@@ -579,6 +579,9 @@ class Editor:
         if name == "k" and not ctrl:
             self.toggle_scale_filter()
             return True
+        if name == "m" and not ctrl:
+            self.toggle_metronome()
+            return True
         if name == "q" and not ctrl:
             self.quantise_to_grid()
             return True
@@ -645,6 +648,13 @@ class Editor:
             return self.message
         self._apply_scale()
         self.message = f"Key {key_text(self.key_root, self.key_scale)}"
+        return self.message
+
+    def toggle_metronome(self) -> str:
+        """M: a click on every beat, or not."""
+        t = self.transport
+        t.set_metronome(not t.metronome)
+        self.message = "Metronome on" if t.metronome else "Metronome off"
         return self.message
 
     def toggle_scale_filter(self) -> str:
@@ -801,6 +811,8 @@ class Editor:
             return self.set_key((raw or {}).get("key", ""))
         if key == "view.scale_filter":
             return self.toggle_scale_filter()
+        if key == "transport.metronome":
+            return self.toggle_metronome()
         if key == "edit.cut":
             return self.cut()
         if key == "edit.copy":
@@ -896,6 +908,8 @@ class Editor:
             parts.append(f"loop {loop_text(self.widget.view.bars, self.transport.loop)}")
         if self.scale_filter:
             parts.append(f"scale {key_text(self.key_root, self.key_scale)}")
+        if self.transport.metronome:
+            parts.append("click")
         if self.history.can_undo:
             parts.append(f"undo: {self.history.undo_label}")
         if self.message:

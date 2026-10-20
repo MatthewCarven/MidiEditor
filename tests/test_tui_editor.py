@@ -610,3 +610,10 @@ class TestScaleFilter:
         assert any(s.role == "out_of_scale" for s in g.build().spans)
         ed.key("k")
         assert g.scale is None
+
+
+class TestMetronome:
+    def test_m_toggles_the_click(self):
+        _, _, ed, _, _ = make()
+        assert ed.key("m") and ed.transport.metronome and "click" in ed.status_tail()
+        assert ed.run_key("transport.metronome") == "Metronome off" and not ed.transport.metronome

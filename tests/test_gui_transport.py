@@ -385,3 +385,10 @@ class TestScaleFilter:
         ed.key("k")
         assert w.scale is None and "scale" not in ed.status_tail()
         assert ed.run_key("view.key", {"key": "H sharp"}).startswith("Key:")
+
+
+class TestMetronome:
+    def test_m_toggles_the_click(self):
+        _, _, ed, _, _ = make(bar=9)
+        assert ed.key("m") and ed.transport.metronome and "click" in ed.status_tail()
+        assert ed.run_key("transport.metronome") == "Metronome off" and not ed.transport.metronome

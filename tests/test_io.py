@@ -1008,3 +1008,26 @@ def test_musical_content_keeps_the_last_of_two_same_tick_meta_events(tmp_path):
     meta = musical_content(path)["meta"]
     assert [m[0] for m in meta] == [0, 960]
     assert "400000" in repr(meta[0]) and "500000" not in repr(meta)
+
+
+def test_a_note_never_released_is_closed_at_the_files_end_in_every_channel(tmp_path):
+    """A format 0 file's end_of_track rides with the first channel's slice
+    only; the other channels must still close their hanging notes at the
+    file's end, not at their own last event. And the check must agree."""
+    import mido
+    from midiseq.core import io_midi
+    mid = mido.MidiFile(type=0, ticks_per_beat=96)
+    t = mido.MidiTrack()
+    mid.tracks.append(t)
+    t.append(mido.Message("note_on", channel=0, note=60, velocity=90, time=0))
+    t.append(mido.Message("note_on", channel=3, note=48, velocity=90, time=0))
+    t.append(mido.Message("note_off", channel=0, note=60, velocity=0, time=96))
+    t.append(mido.MetaMessage("end_of_track", time=200))       # channel 3's note is never released
+    path = tmp_path / "hanging.mid"
+    mid.save(str(path))
+    song = io_midi.load(path)
+    hanging = next(n for tr in song.tracks for n in tr.notes if n.pitch == 48)
+    assert (hanging.start, hanging.end) == (0, 296)
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)
+    assert io_midi.musical_content(path)["notes"] == io_midi.musical_content(out)["notes"]

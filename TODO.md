@@ -190,10 +190,10 @@ one layer up: **only what you actually changed changes.**
       files: 89.3% identical, 47 lost or invented something, 123 unreadable by
       mido. WORKLOG has the breakdown. The edit-a-`.seq`-through-FL half is
       still **for Matthew**.
-- [ ] **Bug: note invented** — 32 files; the examples are all Ecco the Dolphin.
-      Open one with `seq check -v` and diff the event streams.
-- [ ] **Bug: tempo/meter event lost** — 15 files (Landstalker, Sonic 1, Illusion
-      of Gaia, Super Mario Kart). `_dedupe` is the first suspect.
+- [x] **Bug: note invented** — 32 files; the examples are all Ecco the Dolphin.
+      Open one with `seq check -v` and diff the event streams. *2026-10-21: not invented - released. A note_on the file never releases is closed at the track's end (the loader's rule); the checker dropped such notes, so the release looked new. The checker closes them the same way now, and a format 0 channel is handed the file's end so it closes at the right tick.*
+- [x] **Bug: tempo/meter event lost** — 15 files (Landstalker, Sonic 1, Illusion
+      of Gaia, Super Mario Kart). `_dedupe` is the first suspect. *2026-10-21: it was the checker counting the model's same-tick dedupe as a loss; fixed on 2026-10-19 with `musical_content` keeping the last word per tick. Zero in these folders now.*
 - [ ] Maybe, later: a lenient reader for the 62 "data byte must be in range"
       files — old-game SysEx / running-status quirks that mido refuses. In the
       spirit of the thing; not a writer bug.

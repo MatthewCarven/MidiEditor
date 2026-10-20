@@ -1199,3 +1199,24 @@ is S, and a click on the header or the ruler puts the playhead there.
 `TextView.hit` maps a character to a square from the column positions it
 already keeps; the pane hands Textual's click to the editor the way it
 hands keys. Seven tests. 492 tests.
+
+### The two round-trip bugs
+
+2026-10-21, with the library's folder back in reach. Both turned out to be
+the checker's, not the writer's.
+
+*"Tempo/meter event lost"* (Landstalker, Sonic, Gaia, Mario Kart) was the
+model's documented same-tick dedupe being counted as a loss; the 19th's
+change to `musical_content` (the last word per tick) had already cleared
+it. Zero in those folders today.
+
+*"Note invented"* (Ecco the Dolphin, 11 of 23 files there; two more in
+Gaia) is a note_on the file never releases. The loader closes such a note
+at the track's end rather than letting it vanish, the writer then writes
+that release, and the checker, which simply dropped unpaired note_ons,
+saw a note it had never counted. The checker closes them the same way
+now. One real defect fell out: in a format 0 file the split hands the
+end_of_track to the first channel only, so the other channels closed
+their hanging notes at their own last event rather than the file's end,
+six ticks early in `the_undercaves.mid`. The split now passes every
+channel the file's end. One test. 493 tests.

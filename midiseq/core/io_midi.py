@@ -89,7 +89,8 @@ def _absolute(mtrack) -> list[tuple[int, "mido.Message"]]:
     return out
 
 
-def _load_track(events: list[tuple[int, "mido.Message"]], song: Song) -> Track:
+def _load_track(events: list[tuple[int, "mido.Message"]], song: Song,
+                end_tick: int | None = None) -> Track:
     track = Track()
     open_notes: dict[tuple[int, int], list[tuple[int, int]]] = {}
     last_tick = 0
@@ -160,10 +161,14 @@ def _load_track(events: list[tuple[int, "mido.Message"]], song: Song) -> Track:
 
     # Notes still sounding at the end of the track get closed there rather than
     # silently vanishing.
+    # "There" is the end_of_track when the track has one; a format 0 channel's
+    # slice is handed the file's end by the split, since the marker itself
+    # rides with the first channel only.
+    end = max(last_tick, track.end_tick_hint or 0, end_tick or 0)
     for (ch, pitch), stack in open_notes.items():
         for start, vel in stack:
             track.notes.append(song.make_note(
-                pitch, start, max(0, last_tick - start), vel, channel=ch))
+                pitch, start, max(0, end - start), vel, channel=ch))
 
     if note_channel is not None:
         track.channel = note_channel
@@ -180,6 +185,7 @@ def _split_format0(mtrack, song: Song) -> list[Track]:
     format 0 merges everything back into one, which puts them where they started.
     """
     events = _absolute(mtrack)
+    track_end = max((tick for tick, _ in events), default=0)
     channels = sorted({
         msg.channel for _, msg in events
         if msg.type in _MODELLED and not (msg.type == "note_on" and msg.velocity == 0)
@@ -199,7 +205,7 @@ def _split_format0(mtrack, song: Song) -> list[Track]:
         mine = [(tick, m) for tick, m in events
                 if getattr(m, "channel", None) == ch
                 or (i == 0 and getattr(m, "channel", None) not in channels)]
-        track = _load_track(mine, song)
+        track = _load_track(mine, song, end_tick=track_end)
         track.channel = ch
         if not track.name:
             track.name = f"ch{ch + 1}"
@@ -364,6 +370,11 @@ def musical_content(path: str | Path) -> dict:
                                   msg.velocity))
             else:
                 others.append((tick, msg.type, str(msg.bytes())))
+        for (channel, note), starts in open_notes.items():
+            # Never released: the loader closes it at the track's end, so the
+            # comparison does the same rather than calling the result invented.
+            for start, vel in starts:
+                notes.append((channel, note, start, tick, vel, 0))
     last_word: dict[tuple[int, str], tuple] = {}
     for item in meta:
         last_word[item[:2]] = item

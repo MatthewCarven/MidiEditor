@@ -1124,3 +1124,19 @@ velocity by one, since the terminal keeps Ctrl+Shift+Up/Down for itself.
 `empty_song()` was the same four lines in both apps; it lives in
 `ui_common.py` now. `seq tui` closes the sink in use at exit rather than the
 one it opened. Four tests. 468 tests.
+
+### Step 7 begins: Humanise, and drum names that fit
+
+2026-10-20. `Humanise...` is in the registry (`xform.humanise`): every start
+and velocity in the selection moves by its own random amount within the
+two bounds the prompt asks for (ticks either way, velocity either way).
+The seed is kept on the command, so undo and redo replay the same dice
+and a test can ask for a known throw. Both editors got the menu entry, the
+palette entry and the prompts for free, which is what the registry is for.
+
+Drum name rows turned out to be done already: `row_label` has returned the
+GM name for a channel-10 track since the renderer was written, and the
+names are the short kind (Kick, Snr, HH-c, six characters at most), so the
+window's 60 px gutter and the terminal's fit them as they are. I had
+written a gutter-widening fix before checking the table; it went back out
+again. A test pins the labels. Three tests. 471 tests.

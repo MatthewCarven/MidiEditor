@@ -114,3 +114,22 @@ def test_beats_text():
     assert beats_text(960, 480) == "2 beats"
     assert beats_text(460, 480) == "0.96 beats"
     assert beats_text(0, 480) == "0 beats"
+
+
+def test_a_drum_track_labels_its_rows_by_name_and_the_gutter_fits():
+    from midiseq.core.model import Song, Track
+    song = Song(ppq=480)
+    piano, drums = Track(name="piano", channel=0), Track(name="drums", channel=9)
+    piano.notes.append(song.make_note(60, 0, 480, 80))
+    drums.notes.append(song.make_note(38, 0, 120, 100))                  # Acoustic Snare
+    song.tracks.extend([piano, drums])
+    song.normalise()
+    w = GridWidget(song, 1)
+    w.resize(800, 600)
+    w.build()
+    labels = {r.pitch: r.label for r in w.matrix.rows}
+    assert labels[38] == "Snr" and labels[36] == "Kick"
+    assert max(len(l) for l in labels.values()) * 7 + 14 <= w.layout.gutter_w   # 12 px font, roughly
+    w.set_track(0)
+    w.build()
+    assert {r.pitch: r.label for r in w.matrix.rows}[60] == "C4"

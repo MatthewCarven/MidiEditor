@@ -518,3 +518,27 @@ class TestPassthrough:
         song = io_midi.load(path)
         fresh = song.make_note(72, 0, BEAT)
         assert fresh.nid not in {n.nid for n in song.tracks[0].notes}
+
+
+class TestHumanise:
+    def test_every_note_moves_a_little_and_the_seed_makes_it_repeatable(self):
+        notes = [(60 + i, i * PPQ, PPQ // 2, 80) for i in range(8)]
+        a, b = song_with(notes), song_with(notes)
+        for song in (a, b):
+            History(song).run(edit.Humanise([n.nid for n in song.tracks[0].notes],
+                                            timing=30, velocity=10, seed=7))
+        moved = [(n.start, n.velocity, n.duration) for n in a.tracks[0].notes]
+        assert moved == [(n.start, n.velocity, n.duration) for n in b.tracks[0].notes]
+        for (start, vel, dur), (_, s0, d0, v0) in zip(moved, notes):
+            assert abs(start - s0) <= 30 and abs(vel - v0) <= 10 and dur == d0
+        assert any(s != s0 for (s, _, _), (_, s0, _, _) in zip(moved, notes))
+
+    def test_undo_puts_it_back_and_the_registry_knows_it(self):
+        song = song_with([(60, 0, PPQ, 80), (64, PPQ, PPQ, 90)])
+        before = [(n.start, n.velocity) for n in song.tracks[0].notes]
+        h = History(song)
+        h.run(edit.Humanise([n.nid for n in song.tracks[0].notes], seed=1))
+        h.undo()
+        assert [(n.start, n.velocity) for n in song.tracks[0].notes] == before
+        assert edit.REGISTRY["xform.humanise"].category is edit.Category.INDEPENDENT
+        assert edit.Humanise([1], timing=0, velocity=0, seed=3).plan(song) is not None

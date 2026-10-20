@@ -65,6 +65,8 @@ PROMPTS: dict[str, list[tuple[str, str, str]]] = {
     "xform.invert": [("axis", "Axis note, e.g. G4 (blank: the midpoint)", "")],
     "xform.quantise": [("strength", "Strength, percent", "100"),
                        ("ends", "Note ends too? y/n", "n")],
+    "xform.humanise": [("timing", "Timing, ticks either way (0: none)", "20"),
+                       ("velocity", "Velocity either way (0: none)", "8")],
     "xform.snap_to_scale": [("key", "Key (C major, A minor, D harmonic minor)", "C major")],
     "note.velocity": [("velocity", "Velocity: 96, +10, -10 or x0.8", "+10")],
 }
@@ -210,6 +212,8 @@ def build_command(key: str, raw: dict[str, str], nids: set[int], *, tpc: int,
         strength = float(raw.get("strength", "100")) / 100.0
         ends = raw.get("ends", "n").strip().lower().startswith("y")
         return edit.Quantise(sel, tpc, strength=strength, ends=ends), keysig
+    if key == "xform.humanise":
+        return edit.Humanise(sel, int(raw.get("timing", "20")), int(raw.get("velocity", "8"))), keysig
     if key == "xform.snap_to_scale":
         if raw.get("key", "").strip():
             keysig = parse_key(raw["key"])

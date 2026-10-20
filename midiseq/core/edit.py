@@ -27,6 +27,7 @@ legitimate. Calling both of them "Transpose" is not. Two classes, two names.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import random
 from enum import Enum
 from typing import Callable, Iterable, Sequence
 
@@ -509,6 +510,35 @@ def register(key: str, cls: type) -> None:
     REGISTRY[key] = CommandSpec(key, cls.label, cls.category, cls, cls.shortcut)
 
 
+class Humanise(Command):
+    """Loosen a quantised passage: every start and every velocity moves by
+    its own small random amount, within the bounds given. The seed is kept
+    on the command, so undo and redo replay the same throw of the dice and
+    a test can ask for a known one."""
+
+    label = "Humanise..."
+    category = Category.INDEPENDENT
+
+    def __init__(self, nids: Iterable[int], timing: int = 20, velocity: int = 8,
+                 seed: int | None = None) -> None:
+        super().__init__()
+        self.nids = set(nids)
+        self.timing, self.velocity = max(0, int(timing)), max(0, int(velocity))
+        self.seed = random.randrange(1 << 30) if seed is None else seed
+
+    def plan(self, song: Song) -> list[TrackDiff]:
+        rng = random.Random(self.seed)
+        diffs = []
+        for ti, notes in _resolve(song, self.nids).items():
+            out = []
+            for n in notes:
+                start = max(0, n.start + rng.randint(-self.timing, self.timing))
+                vel = max(1, min(127, n.velocity + rng.randint(-self.velocity, self.velocity)))
+                out.append(n.moved(start=start).with_velocity(vel))
+            diffs.append(TrackDiff(ti, removed=tuple(notes), added=tuple(out)))
+        return diffs
+
+
 for _key, _cls in [
     ("note.add", AddNote), ("note.add_notes", AddNotes), ("note.delete", DeleteNotes),
     ("note.move", MoveNotes), ("note.resize", ResizeNotes),
@@ -518,6 +548,7 @@ for _key, _cls in [
     ("xform.invert", Invert), ("xform.retrograde", Retrograde),
     ("xform.augment", Augment), ("xform.diminish", Diminish),
     ("xform.quantise", Quantise), ("xform.snap_to_scale", SnapToScale),
+    ("xform.humanise", Humanise),
 ]:
     register(_key, _cls)
 
@@ -543,6 +574,6 @@ __all__ = [
     "SetVelocity", "SetVelocities",
     "TransposeChromatic", "TransposeDiatonic", "Invert", "Retrograde", "Scale",
     "Augment", "Diminish",
-    "Quantise", "SnapToScale", "SCALES", "MAJOR", "NATURAL_MINOR",
+    "Quantise", "SnapToScale", "Humanise", "SCALES", "MAJOR", "NATURAL_MINOR",
     "menu_model", "notes_menu", "register",
 ]

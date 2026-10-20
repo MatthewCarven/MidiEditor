@@ -197,15 +197,15 @@ one layer up: **only what you actually changed changes.**
 - [ ] Maybe, later: a lenient reader for the 62 "data byte must be in range"
       files — old-game SysEx / running-status quirks that mido refuses. In the
       spirit of the thing; not a writer bug.
-- [ ] **`seq check` is quadratic in notes per file.** `check_one` diffs
+- [x] **`seq check` is quadratic in notes per file.** `check_one` diffs
       `before[key]` against `after[key]` with `x not in <list>` — O(n·m) per
       field, so a file with a few thousand notes takes about a second and the
       38,601-file VGMusic run was heading for two hours. A `Counter` multiset
-      diff makes it linear. Found 2026-10-18 while killing that run.
+      diff makes it linear. Found 2026-10-18 while killing that run. Fixed the same day: `multiset_diff` is a `Counter`.
 
 ## Before step 3 — housekeeping
 
-- [ ] **For Matthew:** move `midis/` out of the project folder (1.3 GB; it was a
+- [x] **For Matthew:** move `midis/` out of the project folder (1.3 GB; it was a *Done 2026-10-18.*
       compatibility test), then `git init`. Claude writes the `.gitignore` and
       the first commit after.
 - [x] `pip install python-rtmidi` on the 3.14 Python — built from source
@@ -230,7 +230,7 @@ one layer up: **only what you actually changed changes.**
       `grid.py` (scroll, two zooms, track, ghosts, hover, the status line —
       no dpg), `app.py` (window, File/View menus, keys, the file dialog).
       32 GUI tests, suite at 179.
-- [ ] **For Matthew — eyes, the step-3 test point:** run it and look.
+- [x] **For Matthew — eyes, the step-3 test point:** run it and look.
       `seq gui examples/bluesy.mid -t 2 -b 9` (or `python -m midiseq gui …`).
       Wheel = pitches, Shift+wheel = time, Ctrl+wheel = cell width,
       `.` / `,` = finer / coarser grid (1/4…1/64), Tab = next track, G =
@@ -257,7 +257,7 @@ one layer up: **only what you actually changed changes.**
       where it changes in the window — make the two agree one way or the other
 - [ ] Open: no scrollbars yet — position is only visible in the ruler. A thin
       overview strip (where am I in the song) would do more than scrollbars
-- [ ] **Test:** does it feel right, is it readable — judge before interaction
+- [x] **Test:** does it feel right, is it readable — judge before interaction *Looked, 2026-10-18.*
       exists. **For Matthew**, see above.
 
 ## Step 4 — GUI editing

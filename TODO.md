@@ -328,15 +328,15 @@ one layer up: **only what you actually changed changes.**
       with nothing ahead does the |< for you, and switching the output while
       rolling carries on from where it was instead of stopping.
 
-## Step 6 — TUI ✅ built 2026-10-19, awaiting eyes and ears
+## Step 6 — TUI ✅ built 2026-10-19, passed 2026-10-20
 
 - [x] Textual app reusing `core/render.py` and `core/glyphs.py` — `midiseq/ui_tui/`:
   `view.py` (the picture and the cursor), `editor.py` (keys to commands),
   `palette.py` (the `:` line), `app.py` (the only Textual import); `seq tui FILE`
 - [x] `:` palette — the window's entries and prompts, one question per line, plus
   Save / Save as / Go to bar / Track / Play / Rewind / Quit
-- [ ] **Test:** keyboard-only editing — Matthew's eyes and ears; what to try is at the
-  end of WORKLOG.md's step 6 entry
+- [x] **Test:** keyboard-only editing — Matthew's eyes and ears; what to try is at the
+  end of WORKLOG.md's step 6 entry *Passed 2026-10-20: "the tui is in."*
 - Surfaced while building it:
   - [ ] lift what both UIs share out of `ui_gui/` — the palette entries, `PROMPTS`,
     `parse_key`, `velocity_change`, `Editor.build` (the TUI has its own copy as

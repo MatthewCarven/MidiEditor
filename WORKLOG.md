@@ -1060,3 +1060,10 @@ changes stand.
 https://github.com/MatthewCarven/MidiEditor (public); master pushed with
 everything through the gitignore tweak, and it tracks origin now. Pushes are
 part of the routine on this project from here.
+
+### Step 6 passed
+
+2026-10-20, Matthew: *"the tui is in."* The terminal editor's gate, passed a
+day after the Shift chords went to plain letters. Next, by his word: work
+through the open TODO items, cheapest and surest first, and he will start
+asking for specific things once the list is done.

@@ -228,7 +228,7 @@ does here, and it depends only on what is under the cursor — no tool modes.
 arrows            cursor a cell / a pitch      Shift+Left/Right  nudge a cell
 Ctrl+Left/Right   cursor a bar                 Shift+Up/Down     transpose a semitone
 PageUp/PageDown   cursor an octave             [ / ]             down / up a scale degree
-Home / End        bar 1 (and rewind) / last    Ctrl+Up/Down      velocity by five
+Home / End        bar 1 (and rewind) / last    Ctrl/Alt+Up/Down  velocity by five / one
 Tab / Shift+Tab   next / previous track        + / -             a cell longer / shorter
 . / ,             finer / coarser grid         Q                 quantise to the grid
 G / F             ghosts on/off / fit pitches  Ctrl+A / Esc      select the track / deselect
@@ -262,16 +262,18 @@ work.
 match, Up and Down pick another, Esc closes. It is the window's palette —
 the same registry, the same entries, the same questions, asked one at a
 time on the same line (`Invert - Axis note, e.g. G4 (blank: the midpoint):`),
-blank taking the default — plus the terminal's own: Save, Save as, Go to
-bar, Track, Play / Stop, Rewind, Keys, Quit.
+blank taking the default — plus the terminal's own: New, Open, Save, Save as, Go to
+bar, Track, Play / Stop, Rewind, MIDI output, Keys, Quit. New and Open with
+unsaved changes warn once and discard when run again, like Ctrl+Q.
 
 Space plays from the playhead through the same sink as the window, chosen
 the same way (`--midi-out NAME`, the GS Wavetable by default, else the first
-port, else silent with the reason kept in the status line). The playhead is
+port, else silent with the reason kept in the status line); the palette's
+MIDI output entry switches it, rolling or not. The playhead is
 a coloured column that turns the page when it runs off the right edge —
 unless you have moved the view away, in which case it is yours until the
-playhead is back in it. The lane is painted, not editable: Ctrl+Up/Down is
-how velocity moves here.
+playhead is back in it. The lane is painted, not editable: Ctrl+Up/Down (by
+five) and Alt+Up/Down (by one) are how velocity moves here.
 
 ## Editing in a text editor
 

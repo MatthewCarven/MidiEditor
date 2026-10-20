@@ -21,20 +21,25 @@ Fields = list[tuple[str, str, str]]
 
 #: The terminal's own entries, after the window's.
 TUI_ACTIONS = [
+    ("file.new", "New", None),
+    ("file.open", "Open...", None),
     ("file.save", "Save", "Ctrl+S"),
     ("file.save_as", "Save as…", None),
     ("view.goto_bar", "Go to bar…", None),
     ("view.track", "Track…", "Tab"),
     ("transport.play", "Play / Stop", "Space"),
     ("transport.rewind", "Rewind", "Home"),
+    ("audio.output", "MIDI output...", None),
     ("app.help", "Keys", "?"),
     ("app.quit", "Quit", "Ctrl+Q"),
 ]
 
 TUI_PROMPTS: dict[str, Fields] = {
+    "file.open": [("path", "Open (.mid)", "")],
     "file.save_as": [("path", "Save as (.mid)", "")],
     "view.goto_bar": [("bar", "Bar", "1")],
     "view.track": [("track", "Track index", "0")],
+    "audio.output": [("port", "MIDI output (a port name, or silent)", "")],
 }
 
 

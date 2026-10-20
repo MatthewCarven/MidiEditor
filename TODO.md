@@ -342,10 +342,10 @@ one layer up: **only what you actually changed changes.**
     `parse_key`, `velocity_change`, `Editor.build` (the TUI has its own copy as
     `build_command`), `default_track`, `beats_text` — into one toolkit-free module
     both import; today `ui_tui/` imports them from `ui_gui/editor.py` and `grid.py` *Done 2026-10-20: `midiseq/ui_common.py`.*
-  - [ ] New / Open in the terminal (Save and Save as are there; `seq tui` opens one file)
+  - [x] New / Open in the terminal (Save and Save as are there; `seq tui` opens one file) *Done 2026-10-20.*
   - [ ] an editable lane in the terminal — painted only; Ctrl+Up/Down moves velocity
-  - [ ] a MIDI output chooser in the terminal (`--midi-out` only; the window has a combo)
-  - [ ] velocity by one has no key in the terminal; the palette's Set velocity takes `+1`
+  - [x] a MIDI output chooser in the terminal (`--midi-out` only; the window has a combo) *Done 2026-10-20: the palette's MIDI output.*
+  - [x] velocity by one has no key in the terminal; the palette's Set velocity takes `+1` *Done 2026-10-20: Alt+Up/Down.*
   - [x] Windows Terminal cannot tell Shift+Enter from Enter or Shift+Space from Space
     (Matthew, 2026-10-19), sends Ctrl+Shift+S/Z as Ctrl+S/Z, and keeps Ctrl+V and
     Ctrl+Shift+Up/Down for itself — so the terminal's keys are plain letters: S adds to

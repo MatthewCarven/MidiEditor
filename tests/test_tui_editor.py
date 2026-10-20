@@ -546,3 +546,48 @@ class TestEditsWhileRolling:
         ed.run(edit.DeleteNotes({find(song, *G4).nid}))
         assert ed.transport.rolling and len(sink.started) == 2
         assert sink.schedule.start_tick > BAR9
+
+
+class TestTheTerminalCatchesUp:
+    """New, Open, the MIDI output and velocity by one, from the TODO (2026-10-20)."""
+
+    def test_new_and_open_rebuild_the_picture_and_guard_unsaved_work(self):
+        song, g, ed, sink, clock = make()
+        ed.run(edit.DeleteNotes({find(song, *G4).nid}))
+        assert ed.dirty_since_save
+        assert "again to discard" in ed.run_key("file.new")       # the first run warns
+        assert ed.song is song
+        ed.run_key("file.new")                                   # the same action again discards
+        assert ed.song is not song and not ed.dirty_since_save and ed.path is None
+        assert ed.grid.width == g.width and ed.grid.zoom == g.zoom and ed.transport.song is ed.song
+        assert ed.run_key("file.open", {"path": str(BLUESY)}) == "opened bluesy.mid"
+        assert ed.path == BLUESY and len(ed.song.tracks) == len(song.tracks)
+        assert "no such file" in ed.run_key("file.open", {"path": "nowhere.mid"})
+
+    def test_a_different_action_between_disarms_the_discard(self):
+        song, g, ed, sink, clock = make()
+        ed.run(edit.DeleteNotes({find(song, *G4).nid}))
+        ed.run_key("file.new")
+        ed.run_key("edit.deselect")
+        assert "again to discard" in ed.run_key("file.new")       # warned again: the arming was dropped
+
+    def test_alt_up_and_down_move_velocity_by_one(self):
+        song, g, ed, sink, clock = make()
+        before = find(song, *G4).velocity
+        at(g, *G4)
+        assert ed.key("alt+up")
+        assert find(song, *G4).velocity == before + 1
+        ed.key("alt+down")
+        assert find(song, *G4).velocity == before
+
+    def test_the_output_can_be_switched_from_the_palette_while_rolling(self, monkeypatch):
+        from midiseq.ui_tui import editor as module
+        song, g, ed, sink, clock = make()
+        ed.transport.play(BAR9)
+        new = NullSink(clock=clock)
+        monkeypatch.setattr(module, "open_sink", lambda name: (new, f"fake {name}"))
+        assert ed.run_key("audio.output", {"port": "fake"}) == "MIDI out: fake fake"
+        assert ed.sink is new and ed.transport.sink is new and ed.transport.rolling
+        assert not sink.rolling                                  # the old one let go
+        assert ed.run_key("audio.output", {"port": "silent"}) == "MIDI out: silent"
+        assert ed.silent and ed.transport.rolling

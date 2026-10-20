@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .core import edit, io_midi
 from .core.edit import Category, Command
-from .core.model import Song, parse_pitch
+from .core.model import Song, Track, parse_pitch
 
 
 def default_track(song: Song) -> int:
@@ -232,3 +232,11 @@ def autosave(song: Song, path: Path | None) -> Path:
     target = autosave_path(path)
     io_midi.save(song, target)
     return target
+
+
+def empty_song() -> Song:
+    """File > New, in either editor: one empty track at 480 ppq."""
+    song = Song(ppq=480)
+    song.tracks.append(Track(name="Track 1"))
+    song.normalise()
+    return song

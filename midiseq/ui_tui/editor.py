@@ -36,13 +36,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..audio.ports import open_sink
 from ..audio.sink_null import NullSink
 from ..core import edit, io_midi
 from ..core.edit import REGISTRY, Command, NoteSpec
 from ..core.history import History
-from ..core.model import DEFAULT_VELOCITY, Note, parse_pitch
+from ..core.model import DEFAULT_VELOCITY, Note, Song, parse_pitch
 from ..core.transport import Sink, Transport
-from ..ui_common import VELOCITY_STEP, _count, build_command, parse_key, velocity_change
+from ..ui_common import VELOCITY_STEP, _count, build_command, empty_song, parse_key, velocity_change
 from .palette import Palette, prompts_for, tui_entries
 from .view import TextView
 
@@ -58,7 +59,7 @@ KEY_HELP = [
     "arrows            cursor a cell / a pitch      Shift+Left/Right  nudge a cell",
     "Ctrl+Left/Right   cursor a bar                 Shift+Up/Down     transpose a semitone",
     "PageUp/PageDown   cursor an octave             [ / ]             down / up a scale degree",
-    "Home / End        bar 1 (and rewind) / last    Ctrl+Up/Down      velocity by five",
+    "Home / End        bar 1 (and rewind) / last    Ctrl/Alt+Up/Down  velocity by five / one",
     "Tab / Shift+Tab   next / previous track        + / -             a cell longer / shorter",
     ". / ,             finer / coarser grid         Q                 quantise to the grid",
     "G / F             ghosts on/off / fit pitches  Ctrl+A / Esc      select the track / deselect",
@@ -101,6 +102,7 @@ class Editor:
         self.saved_depth = 0
         self.message = ""
         self.quit_armed = False
+        self.discard_armed: str | None = None    # New or Open that warned about unsaved work
         self.want_quit = False
         self.help_open = False
         self._playhead_shown: int | None = None
@@ -349,6 +351,9 @@ class Editor:
         if name in ("shift+left", "shift+right"):
             self.nudge(1 if name == "shift+right" else -1)
             return True
+        if name in ("alt+up", "alt+down"):          # by one; Ctrl+Shift+Up/Down is the terminal's own
+            self.nudge_velocity(1 if name == "alt+up" else -1)
+            return True
         if name in ("ctrl+up", "ctrl+down"):
             self.nudge_velocity(VELOCITY_STEP if name == "ctrl+up" else -VELOCITY_STEP)
             return True
@@ -585,7 +590,7 @@ class Editor:
 
     def save(self) -> str:
         if self.path is None:
-            self.message = "No file name - Save as (Ctrl+Shift+S)"
+            self.message = "No file name - Save as, in the palette (:)"
             return self.message
         try:
             io_midi.save(self.song, self.path)
@@ -617,11 +622,108 @@ class Editor:
         self.want_quit = True
         return True
 
+    def _unsaved_blocks(self, key: str, verb: str) -> bool:
+        """New and Open with unsaved changes: the first run only warns, and
+        the same action run again discards. The terminal's Ctrl+Q rule."""
+        if self.dirty_since_save and self.discard_armed != key:
+            self.discard_armed = key
+            self.message = f"Unsaved changes - {verb} again to discard them, Ctrl+S to save"
+            return True
+        self.discard_armed = None
+        return False
+
+    def _install(self, song: Song, path: Path | None) -> None:
+        """A new song in the same terminal: the picture, the history and the
+        transport are rebuilt around it; the sink, the zoom, the size and
+        the audition choice stay."""
+        old = self.grid
+        self.transport.stop()
+        grid = TextView(song, None, old.zoom, ghosts=old.ghosts, middle_c_octave=old.middle_c_octave,
+                        lane=old.lane, glyphs=old.glyphs)
+        grid.resize(old.width, old.height)
+        self.grid, self.song, self.path = grid, song, path
+        self.selection = grid.selection
+        self.history = History(song)
+        self.history.on_change.append(self._after_history)
+        audition = self.transport.audition_enabled
+        self.transport = Transport(song, self.sink)
+        self.transport.audition_enabled = audition
+        self.saved_depth = 0
+        self.quit_armed = False
+        self._playhead_shown = None
+        self._follow_anchor = None
+        grid.playhead = 0
+
+    def new_song(self) -> str:
+        if self._unsaved_blocks("file.new", "New"):
+            return self.message
+        self._install(empty_song(), None)
+        self.message = "New song"
+        return self.message
+
+    def open_song(self, text: str) -> str:
+        text = (text or "").strip()
+        if not text:
+            self.message = "Open: no file name"
+            return self.message
+        path = Path(text).expanduser()
+        if not path.exists():
+            self.message = f"Open: no such file: {path}"
+            return self.message
+        if self._unsaved_blocks("file.open", "Open"):
+            return self.message
+        try:
+            song = io_midi.load(path)
+        except Exception as exc:  # noqa: BLE001 - UI boundary
+            self.message = f"could not read {path.name}: {exc}"
+            return self.message
+        try:
+            self._install(song, path)
+        except ValueError as exc:                  # no tracks, or SMPTE: no bars to draw
+            self.message = f"could not open {path.name}: {exc}"
+            return self.message
+        self.message = f"opened {path.name}"
+        return self.message
+
+    def set_sink(self, sink: Sink, note: str = "") -> None:
+        """Swap where the sound goes; whatever is rolling carries on from
+        where it is on the new sink, as in the window."""
+        t = self.transport
+        was_rolling = t.rolling
+        at = t.position()
+        t.stop()
+        self.sink, self.sink_note = sink, note
+        t.sink = sink
+        if was_rolling:
+            t.play(at)
+
+    def choose_output(self, text: str) -> str:
+        """The palette's MIDI output: a port name (exact first, else a
+        substring of one), or ``silent``."""
+        name = (text or "").strip()
+        old = self.sink
+        self.set_sink(NullSink(keep_log=False), "silent")   # let the old port go first: it may be the one asked for
+        close = getattr(old, "close", None)
+        if callable(close):
+            close()
+        if name.lower() not in ("", "silent", "(silent)", "none", "off"):
+            self.set_sink(*open_sink(name))
+        self.message = f"MIDI out: {self.sink_note}"
+        return self.message
+
     # -- the registry's door ------------------------------------------------------
 
     def run_key(self, key: str, raw: dict[str, str] | None = None) -> str:
         """Run a palette entry by its key. Returns the status message."""
         raw = raw or {}
+        if key != self.discard_armed:
+            self.discard_armed = None
+        if key == "file.new":
+            return self.new_song()
+        if key == "file.open":
+            return self.open_song(raw.get("path", ""))
+        if key == "audio.output":
+            return self.choose_output(raw.get("port", ""))
         if key == "file.save":
             return self.save()
         if key == "file.save_as":

@@ -72,7 +72,7 @@ from ..core.model import (
     Song,
     Track,
 )
-from ..ui_common import autosave, autosave_path
+from ..ui_common import autosave, autosave_path, empty_song
 from .editor import (
     PROMPTS, Editor, MenuEntry, TransportState, edit_menu, menu_sections, palette,
 )
@@ -833,13 +833,6 @@ class GridApp:
 # --------------------------------------------------------------------------
 # Entry points
 # --------------------------------------------------------------------------
-
-def empty_song() -> Song:
-    song = Song(ppq=480)
-    song.tracks.append(Track(name="Track 1"))
-    song.normalise()
-    return song
-
 
 def launch(path: str | None = None, *, track: int | None = None, zoom: Zoom = Zoom(16),
            middle_c_octave: int = DEFAULT_MIDDLE_C_OCTAVE, ghosts: bool = True, bar: int = 1,

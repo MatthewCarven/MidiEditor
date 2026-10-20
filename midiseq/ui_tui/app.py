@@ -38,6 +38,7 @@ from ..core.model import (
     Song,
     Track,
 )
+from ..ui_common import empty_song
 from .editor import KEY_HELP, Editor
 from .view import Frame, TextView
 
@@ -163,13 +164,6 @@ class SeqApp(App):
 # Entry points
 # --------------------------------------------------------------------------
 
-def empty_song() -> Song:
-    song = Song(ppq=480)
-    song.tracks.append(Track(name="Track 1"))
-    song.normalise()
-    return song
-
-
 def launch(path: str | None = None, *, track: int | None = None, zoom: Zoom = Zoom(16),
            middle_c_octave: int = DEFAULT_MIDDLE_C_OCTAVE, ghosts: bool = True, bar: int = 1,
            midi_out: str | None = None) -> int:
@@ -206,7 +200,7 @@ def launch(path: str | None = None, *, track: int | None = None, zoom: Zoom = Zo
         SeqApp(editor).run()
     finally:
         editor.transport.stop()
-        close = getattr(sink, "close", None)
+        close = getattr(editor.sink, "close", None)     # the one in use: the palette may have switched it
         if callable(close):
             close()
     return 0

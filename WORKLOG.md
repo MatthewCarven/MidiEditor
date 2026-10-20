@@ -1110,3 +1110,17 @@ The text view labelled the meter on every bar whose meter differed from the
 after - while the window labels it where it changes. The text view now does
 the same: the first bar of a slice, and where it changes from the bar
 before. One test added. 464 tests.
+
+### The terminal catches up
+
+2026-10-20. Three of the step-6 leftovers, all in the terminal's palette and
+editor: **New** and **Open...** (unsaved changes warn once and the same
+action run again discards, the Ctrl+Q rule; the picture, history and
+transport are rebuilt around the new song and the sink, zoom, size and
+audition choice stay), **MIDI output...** (a port name, exact first, or
+`silent`; whatever is rolling carries on on the new sink, and the old port
+is let go first so the same port can be re-chosen), and **Alt+Up/Down** for
+velocity by one, since the terminal keeps Ctrl+Shift+Up/Down for itself.
+`empty_song()` was the same four lines in both apps; it lives in
+`ui_common.py` now. `seq tui` closes the sink in use at exit rather than the
+one it opened. Four tests. 468 tests.

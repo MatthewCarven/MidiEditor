@@ -149,7 +149,7 @@ Labelling is a pure display-layer offset — the model only ever stores note 60.
 header declares its own convention (`middle-c C4`), so a file written in one and opened in
 the other shifts its *labels* and not its *notes*. A file can't be silently misread.
 
-### Beginner / child profile (later)
+### Beginner / child profile (built 2026-10-26)
 
 Since the label is free, it can be anything:
 
@@ -497,7 +497,7 @@ committed to, because readability is the expensive thing to change later.
   scales the drawing, never the widgets** — a zoom that resizes the control you zoom with
   feeds back on itself.
 - **Beginner / child display profile** — solfège labels and vocal-range shading. Scoped
-  above, not yet committed to.
+  above; decided and built 2026-10-26: B in both editors, `Singing range...` sets the band.
 - **`.seq` extension name** — now cosmetic, since it's only a view.
 
 ---

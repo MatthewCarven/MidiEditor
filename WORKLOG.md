@@ -1236,3 +1236,34 @@ event's tick, so nothing after it moves, and the checker compares unknown
 metas by content, since their tick is not knowable through mido. The
 original loss - what every mido-based program hears - is on the TODO
 with the fix shape (a raw walk of the track bytes). One test. 494 tests.
+
+### The beginner profile
+
+2026-10-26. PLAN.md §7's little-kid mode, built as step 7's last item and
+the TODO's open decision closed with it: in. `render(..., profile=Profile(
+low, high))` labels the naturals in solfège - do re mi fa so la ti, middle
+C as DO, home, whatever the middle-C setting calls it, since that setting
+only moves the labels - leaves the accidentals blank rather than teaching
+a seven-year-old "di ri fi si li", puts no number anywhere in the gutter,
+and marks each row `in_range` against the singing range; a drum track
+keeps its names and is never out of range. Both views shade from the flag
+the way they shade the rows outside a key (`out_of_range_row` and a dim
+label role in the window, where a blank label draws nothing and a line
+marks the ceiling and the floor; an `out_of_range` span in the terminal,
+whose gutter sizes itself to the new labels). The range starts at D4-A4,
+the band children of five to seven sing comfortably; `Singing range...`
+(View menu, palette) takes two note names in either order through the
+Invert prompt's parser (`ui_common.parse_range`) and turns the profile
+on, since the range is only ever seen through it - the one place this
+departs from the Key... pattern, where setting the key leaves the filter
+alone. B toggles it in both editors (free in both; the window's key tables
+gain it), the View menu's check follows the key, and `beginner D4-A4`
+sits in both status lines. Six tests. 500 tests.
+
+For Matthew's eyes: in the window, B on bar 9 of bluesy - the gutter
+should read ti la so fa mi re DO with blank shaded rows between, a blue
+line above A4 and another below D4, everything outside dark, and View >
+Singing range... with `C4-C5` should widen the band and tick the menu's
+check. In the terminal, the same B, then `:sing` for the prompt; the
+gutter should stay four wide and the `>` cursor mark still show on a
+blank accidental row.

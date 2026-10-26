@@ -12,6 +12,7 @@ from pathlib import Path
 
 from midiseq.core import io_midi
 from midiseq.core.grid import Zoom
+from midiseq.core.render import Profile
 from midiseq.ui_tui.view import HEADER_LINES, LANE_LINES, TextView
 
 BLUESY = Path(__file__).resolve().parent.parent / "examples" / "bluesy.mid"
@@ -186,6 +187,22 @@ class TestRoles:
         v.playhead = 0
         f = v.build()
         assert f.playhead_x is None and not any(s.role == "playhead" for s in f.spans)
+
+
+    def test_the_beginner_profile_is_solfege_in_the_gutter_and_a_shaded_range(self):
+        v = make()
+        v.set_profile(Profile())
+        f = v.build()
+        y = lambda pitch: HEADER_LINES + v.row_of_pitch(pitch)                   # noqa: E731
+        assert f.lines[y(67)][1:3] == "so" and f.lines[y(60)][1:3] == "DO"      # G4 is so; middle C is home
+        assert f.lines[y(68)][1:3] == "  "                                       # G#4 is blank, and still shaded
+        assert any(s.role == "accidental" and s.y == y(68) for s in f.spans)
+        outside = {s.y for s in f.spans if s.role == "out_of_range"}
+        assert y(70) in outside and y(61) in outside and y(69) not in outside and y(62) not in outside
+        assert all((s.x0, s.x1) == (0, 100) for s in f.spans if s.role == "out_of_range")
+        v.set_profile(None)
+        f = v.build()
+        assert f.lines[y(67)][1:3] == "G4" and not any(s.role == "out_of_range" for s in f.spans)
 
 
 class TestFollowAndStatus:

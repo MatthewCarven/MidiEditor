@@ -67,9 +67,11 @@ from ..core import edit
 from ..core.edit import REGISTRY, Category, Command, NoteSpec
 from ..core.history import History
 from ..core.model import DEFAULT_VELOCITY, Note, parse_pitch
+from ..core.render import DEFAULT_SINGING_RANGE, Profile
 from ..core.transport import Sink, Transport
 from .grid import GridWidget
 from .paint import Primitive, Rect, lane_bar, tick_rect
+from ..ui_common import parse_range, range_text
 from ..ui_common import (  # noqa: F401 - re-exported: these were this module's names until the lift
     ACTIONS, GESTURE_ONLY, NOTE_NAMES, PROMPTS, VELOCITY_STEP, MenuEntry, _count, _entry, all_entries,
     bars_around, build_command, edit_menu, key_text, loop_text, menu_sections, palette, parse_key,
@@ -140,6 +142,8 @@ class Editor:
         self.gesture: Gesture | None = None
         self.key_root, self.key_scale = 0, "major"   # for diatonic moves; C major until told
         self.scale_filter = False                    # K: shade the rows outside the key
+        self.beginner = False                        # B: solfege labels, the singing range shaded
+        self.singing_range = DEFAULT_SINGING_RANGE   # Singing range...: low, high
         self.saved_depth = 0
         self.message = ""
         self.preview_dirty = False
@@ -580,6 +584,9 @@ class Editor:
         if name == "k" and not ctrl:
             self.toggle_scale_filter()
             return True
+        if name == "b" and not ctrl:
+            self.toggle_profile()
+            return True
         if name == "m" and not ctrl:
             self.toggle_metronome()
             return True
@@ -668,6 +675,35 @@ class Editor:
 
     def _apply_scale(self) -> None:
         self.widget.set_scale((self.key_root, self.key_scale) if self.scale_filter else None)
+
+    def toggle_profile(self) -> str:
+        """B: the beginner profile - solfege in the gutter, blank accidentals,
+        the rows outside the singing range shaded - or the plain gutter."""
+        self.beginner = not self.beginner
+        self._apply_profile()
+        self.message = (f"Beginner profile: {self._range_text()}" if self.beginner
+                        else "Beginner profile off")
+        return self.message
+
+    def set_singing_range(self, text: str) -> str:
+        """Singing range...: ``D4-A4`` (the default; children of five to seven),
+        ``C4-C5`` (about an octave, by nine), or any two notes. Turns the
+        profile on, since the range is only ever seen through it."""
+        try:
+            self.singing_range = parse_range(text, self.widget.middle_c_octave)
+        except ValueError as exc:
+            self.message = f"Singing range: {exc}"
+            return self.message
+        self.beginner = True
+        self._apply_profile()
+        self.message = f"Singing range {self._range_text()}"
+        return self.message
+
+    def _apply_profile(self) -> None:
+        self.widget.set_profile(Profile(*self.singing_range) if self.beginner else None)
+
+    def _range_text(self) -> str:
+        return range_text(*self.singing_range, self.widget.middle_c_octave)
 
     def toggle_loop(self) -> str:
         """L: a loop over the selection's bars, else the playhead's bar; L
@@ -812,6 +848,10 @@ class Editor:
             return self.set_key((raw or {}).get("key", ""))
         if key == "view.scale_filter":
             return self.toggle_scale_filter()
+        if key == "view.profile":
+            return self.toggle_profile()
+        if key == "view.range":
+            return self.set_singing_range((raw or {}).get("range", ""))
         if key == "transport.metronome":
             return self.toggle_metronome()
         if key == "edit.cut":
@@ -909,6 +949,8 @@ class Editor:
             parts.append(f"loop {loop_text(self.widget.view.bars, self.transport.loop)}")
         if self.scale_filter:
             parts.append(f"scale {key_text(self.key_root, self.key_scale)}")
+        if self.beginner:
+            parts.append(f"beginner {self._range_text()}")
         if self.transport.metronome:
             parts.append("click")
         if self.history.can_undo:

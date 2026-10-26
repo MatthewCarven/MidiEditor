@@ -22,7 +22,7 @@ from midiseq.core.model import (
     parse_pitch,
     pitch_name,
 )
-from midiseq.core.render import render
+from midiseq.core.render import Profile, render
 from midiseq.core.transport import Audition, Transport
 
 PPQ = 480
@@ -555,3 +555,24 @@ class TestScaleFilter:
         drums = song_with([(38, 0, PPQ)], channel=9)
         shaded = render(drums, 0, low_pitch=38, high_pitch=40, ghosts=False, scale=(0, "major"))
         assert all(r.in_scale is None for r in shaded.rows)             # a drum track has no key
+
+
+class TestBeginnerProfile:
+    def test_the_gutter_is_solfege_and_the_singing_range_is_marked(self):
+        song = song_with([(60, 0, PPQ)])
+        matrix = render(song, 0, low_pitch=59, high_pitch=72, ghosts=False, profile=Profile())
+        labels = {r.pitch: r.label for r in matrix.rows}
+        assert labels[60] == "DO" and labels[72] == "do"                  # middle C is home, whatever it is called
+        assert labels[62] == "re" and labels[67] == "so" and labels[71] == "ti"
+        assert labels[61] == "" and labels[70] == ""                      # accidentals stay blank: no "di ri fi"
+        assert not any(ch.isdigit() for ch in "".join(labels.values()))  # and no note numbers anywhere
+        flags = {r.pitch: r.in_range for r in matrix.rows}
+        assert flags[62] and flags[69] and not flags[61] and not flags[70] and not flags[59]     # D4-A4
+        octave = render(song, 0, low_pitch=59, high_pitch=72, ghosts=False, profile=Profile(72, 60))
+        assert all(r.in_range == (60 <= r.pitch <= 72) for r in octave.rows)     # C4-C5, in either order
+        plain = render(song, 0, low_pitch=60, high_pitch=62, ghosts=False)
+        assert all(r.in_range is None for r in plain.rows) and plain.rows[0].label == "D4"
+        drums = song_with([(38, 0, PPQ)], channel=9)
+        kit = render(drums, 0, low_pitch=36, high_pitch=38, ghosts=False, profile=Profile())
+        assert [r.label for r in kit.rows] == ["Snr", "Stick", "Kick"]   # a drum track keeps its names
+        assert all(r.in_range is None for r in kit.rows)                 # and is never out of range

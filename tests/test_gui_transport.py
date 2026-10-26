@@ -12,6 +12,7 @@ from pathlib import Path
 
 from midiseq.audio.sink_null import NullSink
 from midiseq.core import edit, io_midi
+from midiseq.core.render import Profile
 from midiseq.ui_gui.editor import LEFT, RIGHT, Editor, TransportState, bpm_text
 from midiseq.ui_gui.grid import GridWidget
 from midiseq.ui_gui.paint import DEFAULT_THEME, Line
@@ -392,3 +393,20 @@ class TestMetronome:
         _, _, ed, _, _ = make(bar=9)
         assert ed.key("m") and ed.transport.metronome and "click" in ed.status_tail()
         assert ed.run_key("transport.metronome") == "Metronome off" and not ed.transport.metronome
+
+
+class TestBeginnerProfile:
+    def test_b_turns_the_gutter_into_solfege_and_the_range_prompt_sets_the_band(self):
+        _, w, ed, _, _ = make(bar=9)
+        assert ed.key("b") and w.profile == Profile() and "beginner D4-A4" in ed.status_tail()
+        w.build()
+        labels = {r.pitch: r.label for r in w.matrix.rows}
+        flags = {r.pitch: r.in_range for r in w.matrix.rows}
+        assert labels[67] == "so" and labels[68] == "" and labels[60] == "DO"
+        assert flags[67] and flags[70] is False and flags[60] is False
+        assert ed.run_key("view.range", {"range": "C4-C5"}) == "Singing range C4-C5"
+        assert w.profile == Profile(60, 72) and "beginner C4-C5" in ed.status_tail()
+        assert ed.key("b") and w.profile is None and "beginner" not in ed.status_tail()
+        assert ed.run_key("view.range", {"range": "D4"}).startswith("Singing range:") and w.profile is None
+        assert ed.run_key("view.range", {"range": "A4-D4"}) == "Singing range D4-A4"   # either order,
+        assert w.profile == Profile() and ed.beginner                                 # and it turns the profile on

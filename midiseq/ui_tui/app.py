@@ -50,6 +50,7 @@ MIDDLE_C = {"c3": MIDDLE_C_YAMAHA, "c4": MIDDLE_C_SCIENTIFIC, "c5": MIDDLE_C_FL}
 STYLES = {
     "accidental": Style(bgcolor="grey15"),
     "out_of_scale": Style(bgcolor="grey7", color="grey35"),
+    "out_of_range": Style(bgcolor="grey7", color="grey35"),
     "ghost": Style(color="grey46"),
     "note": Style(color="white", bold=True),
     "selected": Style(color="black", bgcolor="yellow3", bold=True),

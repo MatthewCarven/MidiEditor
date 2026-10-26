@@ -198,12 +198,15 @@ DEFAULT_THEME: dict[str, tuple[int, int, int, int]] = {
     "bg": (24, 24, 28, 255),
     "accidental_row": (36, 36, 44, 255),
     "out_of_scale_row": (22, 22, 28, 255),   # under a scale filter: not in the key
+    "out_of_range_row": (22, 22, 28, 255),   # under the beginner profile: outside the singing range
+    "range_edge": (130, 160, 210, 255),      # the range's ceiling and floor
     "bar_line": (96, 96, 110, 255),
     "beat_line": (52, 52, 62, 255),
     "ruler_text": (190, 190, 200, 255),
     "row_label": (190, 190, 200, 255),
     "row_label_accidental": (120, 120, 135, 255),
     "row_label_out_of_scale": (80, 80, 95, 255),
+    "row_label_out_of_range": (80, 80, 95, 255),
     "off_grid": (255, 200, 80, 255),
     "note_soft": (140, 180, 90, 255),
     "note_medium": (230, 170, 60, 255),
@@ -341,15 +344,27 @@ def plan(matrix: Matrix, layout: Layout, *, first_cell: int,
 
     items.append(Rect(0, 0, width, height, "bg"))
 
-    # Accidental rows: one wide rectangle each, under everything.
+    # Accidental rows: one wide rectangle each, under everything. A row
+    # outside the singing range or the key is shaded darker instead.
     for ri in range(rows):
         row = matrix.rows[ri]
-        if row.in_scale is False:
+        if row.in_range is False:
+            y = y_of(ri)
+            items.append(Rect(layout.gutter_w, y, grid_right, y + rh, "out_of_range_row"))
+        elif row.in_scale is False:
             y = y_of(ri)
             items.append(Rect(layout.gutter_w, y, grid_right, y + rh, "out_of_scale_row"))
         elif row.accidental:
             y = y_of(ri)
             items.append(Rect(layout.gutter_w, y, grid_right, y + rh, "accidental_row"))
+
+    # The singing range's ceiling and floor: a line where the rows go from
+    # inside to outside, across the gutter too, so the band reads at the labels.
+    for ri in range(rows - 1):
+        above, below = matrix.rows[ri].in_range, matrix.rows[ri + 1].in_range
+        if above is not None and below is not None and above != below:
+            y = y_of(ri + 1)
+            items.append(Line(0, y, grid_right, y, "range_edge"))
 
     # Columns: bar and beat lines; bar numbers, with the meter where it changes.
     visible = [(ci, c) for ci, c in enumerate(matrix.columns)
@@ -418,12 +433,14 @@ def plan(matrix: Matrix, layout: Layout, *, first_cell: int,
             run_fill = cell.end_fill
         flush()
 
-    # Row labels (every other one when rows get short) and the ~ flag.
+    # Row labels (every other one when rows get short; none for a blank
+    # label, the beginner profile's accidentals) and the ~ flag.
     for ri in range(rows):
         row = matrix.rows[ri]
         y = y_of(ri)
-        if rh >= 11 or ri % 2 == 0:
-            role = ("row_label_out_of_scale" if row.in_scale is False
+        if row.label and (rh >= 11 or ri % 2 == 0):
+            role = ("row_label_out_of_range" if row.in_range is False
+                    else "row_label_out_of_scale" if row.in_scale is False
                     else "row_label_accidental" if row.accidental else "row_label")
             items.append(Label(6, y, row.label, role, 12))
         if row.off_grid_flag:

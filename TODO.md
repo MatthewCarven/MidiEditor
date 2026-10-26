@@ -12,7 +12,10 @@ for how to run what exists.
       above; reasons and costs in PLAN.md §15. Gated on the grid spike (Step 3,
       first item). Rule carried from PySynthRack's zoom bug: zoom scales the
       drawing, never the widgets.
-- [ ] Beginner / child display profile — commit to it or defer to phase 7?
+- [x] **Beginner / child display profile — in.** Decided 2026-10-26, and built
+      the same day as step 7's last item: B in both editors shows PLAN.md §7's
+      mockup — solfège for the naturals, blank accidentals, the singing range
+      shaded — on top of the renderer, as the scale filter is.
 - [ ] `.seq` extension name (cosmetic now that it's only a view)
 
 ## Step 1 — core skeleton ✅ done, **test passed 2026-08-16 (FL Studio 2026)**
@@ -373,4 +376,7 @@ one layer up: **only what you actually changed changes.**
 - [x] Scale filter. *2026-10-21: K in both editors shades the rows outside the key; Key... (View menu, palette) sets it, and so do the diatonic moves.*
 - [x] Drum name rows for ch10 (names in `render.GM_DRUMS`). *Rendered since step 2 in every view, as the short GM names (Kick, Snr, HH-c), which fit every gutter; checked 2026-10-20.*
 - [x] Humanise. *2026-10-20: `xform.humanise`, timing and velocity either way, seeded so undo and redo agree; both editors have it through the registry.*
-- [ ] Beginner profile — solfège labels, vocal-range shading
+- [x] Beginner profile — solfège labels, vocal-range shading. *2026-10-26: B in both
+      editors turns the gutter to solfège (DO at middle C, accidentals blank, no
+      numbers) and shades the rows outside the singing range, D4–A4 by default;
+      Singing range... (View menu, palette) sets it.*

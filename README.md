@@ -106,6 +106,16 @@ its scale; View > Key... sets the key, and the diatonic moves and Snap to
 scale set it too. A thin band under the ruler's numbers shows where the view
 and the playhead sit in the whole song.
 
+B is the beginner profile PLAN.md §7 draws. The gutter turns to solfège for
+the naturals — do re mi fa so la ti, with middle C as DO, home — the
+accidentals go blank rather than teaching a seven-year-old "di ri fi si li",
+no note number appears anywhere in the gutter, and the rows outside a
+comfortable singing range are shaded the way the rows outside a key are, with
+a line at the ceiling and the floor. The range starts at D4–A4, the band
+children of five to seven sing comfortably; View > Singing range... sets it
+to about an octave (C4–C5, by nine) or any two notes, in the same names the
+Invert prompt takes. Drum tracks keep their names.
+
 ```
 wheel                 scroll pitches        Shift+wheel        scroll time
 Ctrl+wheel            cell width            . / ,              finer / coarser grid (1/4 … 1/64)
@@ -116,6 +126,7 @@ F                     fit the pitch range   + / -              cell width
 Ctrl+= / Ctrl+-       finer / coarser grid  File > Open        another file
 L                     loop: the selection's bars, or the playhead's; L again: off
 K                     scale filter: shade the rows outside the key (View > Key... sets it)
+B                     beginner profile: solfège in the gutter, the singing range shaded
 M                     metronome on/off
 ```
 
@@ -231,6 +242,8 @@ It is the window's mouse model at a cursor. What a click does there, Enter
 does here, and it depends only on what is under the cursor — no tool modes.
 A mouse works too: click a square and it is Enter there, Shift+click is S,
 and a click on the ruler puts the playhead there.
+B is the beginner profile here too — solfège in the gutter, blank accidentals,
+the singing range shaded — and Singing range... in the palette sets the band.
 `?` shows this table in the terminal:
 
 ```
@@ -250,6 +263,7 @@ Space             play / stop                  Ctrl+Z / Ctrl+Y   undo / redo
 Shift+P           play from the cursor         X / C / V / D     cut, copy, paste at the cursor, duplicate
 L                 loop: the selection's bars, or the cursor's; L again: off
 K                 scale filter: shade the rows outside the key (Key... in the palette sets it)
+B                 beginner profile: solfège in the gutter, the singing range shaded
 M                 metronome on/off
 P                 playhead to the cursor       Ctrl+S            save
 A                 audition on/off              Ctrl+Q            quit (twice, with unsaved changes)
@@ -419,7 +433,7 @@ midiseq/
 python -m pytest
 ```
 
-Four hundred and fifty-five tests, all on the design invariants rather than
+Five hundred tests, all on the design invariants rather than
 the plumbing, and none of them opens a window or a terminal.
 
 Step 6's tests judge the terminal as text: every line is the width and the

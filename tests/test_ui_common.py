@@ -7,6 +7,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from midiseq import ui_common
 from midiseq.ui_gui import editor as gui_editor, grid as gui_grid
 from midiseq.ui_tui import editor as tui_editor
@@ -57,5 +59,19 @@ def test_autosave_lands_beside_the_song_or_in_the_cwd(tmp_path, monkeypatch):
 def test_the_view_entries_are_in_the_palette_with_a_prompt_for_the_key():
     keys = {e.key: e for e in ui_common.all_entries()}
     assert keys["view.key"].needs_prompt and not keys["view.scale_filter"].needs_prompt
+    assert keys["view.range"].needs_prompt and not keys["view.profile"].needs_prompt
     assert ui_common.entry_label("view.key") == "Key" and ui_common.entry_label("xform.invert") == "Invert"
+    assert ui_common.entry_label("view.range") == "Singing range"
     assert ui_common.key_text(9, "minor") == "A minor"
+
+
+def test_a_singing_range_is_two_note_names_in_either_order():
+    assert ui_common.parse_range("D4-A4", 4) == (62, 69) == ui_common.parse_range("A4 - D4", 4)
+    assert ui_common.parse_range("C4 to C5", 4) == (60, 72) == ui_common.parse_range("C4 C5", 4)
+    assert ui_common.parse_range("D3-A3", 3) == (62, 69)         # the middle-C setting moves the names, not the notes
+    assert ui_common.parse_range("C-1-C4", 4) == (0, 60)         # a dash inside a name is not the separator
+    assert ui_common.range_text(62, 69, 4) == "D4-A4" and ui_common.range_text(62, 69, 3) == "D3-A3"
+    with pytest.raises(ValueError):
+        ui_common.parse_range("D4", 4)
+    with pytest.raises(ValueError):
+        ui_common.parse_range("H4-A4", 4)

@@ -73,7 +73,8 @@ def _slice(m: Matrix, start: int, count: int) -> Matrix:
     cols = m.columns[start:start + count]
     shown = {c.bar for c in cols}
     return Matrix(
-        rows=[Row(r.pitch, r.label, r.accidental, r.cells[start:start + count], r.in_scale, r.off_grid_flag)
+        rows=[Row(r.pitch, r.label, r.accidental, r.cells[start:start + count],
+                  in_scale=r.in_scale, in_range=r.in_range, off_grid_flag=r.off_grid_flag)
               for r in m.rows],
         columns=cols,
         bars=[b for b in m.bars if b.number in shown],
@@ -96,6 +97,7 @@ class TextView:
         self.view = GridView(song, zoom, self.index)
         self.ghosts = ghosts
         self.scale: tuple[int, str] | None = None     # shade the rows outside this key, when set
+        self.profile: render.Profile | None = None    # the beginner profile, when on
         self.middle_c_octave = middle_c_octave
         self.lane = lane
         self.glyphs = glyphs
@@ -142,7 +144,7 @@ class TextView:
     def _gutter(self) -> int:
         low = max(0, self.top_pitch - self.visible_rows + 1)
         drums = self.song.tracks[self.track].is_drums
-        return _gutter_width(row_label(p, drums, self.middle_c_octave)
+        return _gutter_width(row_label(p, drums, self.middle_c_octave, self.profile)
                              for p in range(low, self.top_pitch + 1))
 
     def _is_beat_start(self, cell: int) -> bool:
@@ -200,6 +202,12 @@ class TextView:
         """The scale filter: (root pitch class, scale name), or None for none."""
         if scale != self.scale:
             self.scale = scale
+            self.dirty = True
+
+    def set_profile(self, profile: render.Profile | None) -> None:
+        """The beginner profile (solfege labels, the singing range shaded), or None."""
+        if profile != self.profile:
+            self.profile = profile
             self.dirty = True
 
     def set_zoom(self, zoom: Zoom) -> None:
@@ -362,7 +370,7 @@ class TextView:
             first_bar=first_bar, last_bar=last_bar,
             low_pitch=low, high_pitch=high, ghosts=self.ghosts,
             selection=self.selection, middle_c_octave=self.middle_c_octave,
-            index=self.index, scale=self.scale,
+            index=self.index, scale=self.scale, profile=self.profile,
         )
         start = next((i for i, c in enumerate(m.columns) if c.cell >= first), len(m.columns) - 1)
         gutter = _gutter_width(r.label for r in m.rows)
@@ -400,6 +408,8 @@ class TextView:
                 spans.append(Span(y0 + ri, 0, self.width, "accidental"))
             if row.in_scale is False:
                 spans.append(Span(y0 + ri, 0, self.width, "out_of_scale"))
+            if row.in_range is False:
+                spans.append(Span(y0 + ri, 0, self.width, "out_of_range"))
         playhead_x = None
         if self.playhead is not None:
             pi = self._col_index.get(view.tick_to_cell(self.playhead))

@@ -11,12 +11,13 @@ wrong way round: the terminal is not a kind of window.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from .core import edit, io_midi
 from .core.edit import Category, Command
-from .core.model import Song, Track, parse_pitch
+from .core.model import Song, Track, parse_pitch, pitch_name
 
 
 def default_track(song: Song) -> int:
@@ -60,6 +61,8 @@ ACTIONS = [
 VIEW_ACTIONS = [
     ("view.key", "Key...", None),
     ("view.scale_filter", "Scale filter (toggle)", "K"),
+    ("view.profile", "Beginner profile (toggle)", "B"),
+    ("view.range", "Singing range...", None),
     ("transport.metronome", "Metronome (toggle)", "M"),
 ]
 
@@ -78,6 +81,7 @@ PROMPTS: dict[str, list[tuple[str, str, str]]] = {
     "xform.snap_to_scale": [("key", "Key (C major, A minor, D harmonic minor)", "C major")],
     "note.velocity": [("velocity", "Velocity: 96, +10, -10 or x0.8", "+10")],
     "view.key": [("key", "Key (C major, A minor, D harmonic minor)", "C major")],
+    "view.range": [("range", "Singing range, low to high (D4-A4, C4-C5)", "D4-A4")],
 }
 
 NOTE_NAMES = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
@@ -111,6 +115,32 @@ def parse_key(text: str) -> tuple[int, str]:
     if scale not in edit.SCALES:
         raise ValueError(f"unknown scale {scale!r}; one of {', '.join(edit.SCALES)}")
     return root, scale
+
+
+#: The dash, the word "to" or just a space between two note names; a dash
+#: inside a name (``C-1``) is not a separator because no letter follows it.
+_RANGE_SEP = re.compile(r"(?:\s*[-\u2013]\s*|\s+to\s+|\s+)(?=[A-Ga-g])")
+
+
+def parse_range(text: str, middle_c_octave: int) -> tuple[int, int]:
+    """``"D4-A4"`` -> (62, 69) under C4 = 60: a singing range, low to high,
+    in the same note names the Invert prompt takes (``parse_pitch``). The
+    two may come in either order."""
+    parts = _RANGE_SEP.split(text.strip(), maxsplit=1)
+    if len(parts) != 2 or not parts[0].strip():
+        raise ValueError("a range looks like D4-A4: the lowest note, a dash, the highest")
+    low = parse_pitch(parts[0], middle_c_octave)
+    high = parse_pitch(parts[1], middle_c_octave)
+    if low > high:
+        low, high = high, low
+    if not 0 <= low <= 127 or not 0 <= high <= 127:
+        raise ValueError("a range stays within MIDI's notes, C-1 to G9")
+    return low, high
+
+
+def range_text(low: int, high: int, middle_c_octave: int) -> str:
+    """``D4-A4``, for a status line, in the current middle-C convention."""
+    return f"{pitch_name(low, middle_c_octave)}-{pitch_name(high, middle_c_octave)}"
 
 
 def velocity_change(text: str) -> dict:

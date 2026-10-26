@@ -17,6 +17,7 @@ from pathlib import Path
 
 from midiseq.audio.sink_null import NullSink
 from midiseq.core import edit, io_midi
+from midiseq.core.render import Profile
 from midiseq.ui_tui.editor import Editor, normalise_key
 from midiseq.ui_tui.view import TextView
 
@@ -638,3 +639,18 @@ class TestMouse:
         x, _ = self._xy(g, *A4)
         assert ed.click(x, 1) and ed.transport.playhead == A4[1]
         assert not ed.click(0, 5)                                            # the gutter
+
+
+class TestBeginnerProfile:
+    def test_b_turns_the_gutter_into_solfege_and_the_palette_sets_the_range(self):
+        _, g, ed, _, _ = make()
+        assert ed.key("b") and g.profile == Profile() and "beginner D4-A4" in ed.status_tail()
+        f = g.build()
+        y = lambda pitch: 2 + g.row_of_pitch(pitch)                                # noqa: E731
+        assert f.lines[y(67)][1:3] == "so" and f.lines[y(68)][1:3] == "  " and f.lines[y(60)][1:3] == "DO"
+        assert any(s.role == "out_of_range" and s.y == y(70) for s in f.spans)
+        assert not any(s.role == "out_of_range" and s.y == y(67) for s in f.spans)
+        assert ed.run_key("view.range", {"range": "C4-C5"}) == "Singing range C4-C5"
+        assert g.profile == Profile(60, 72) and "beginner C4-C5" in ed.status_tail()
+        assert ed.key("b") and g.profile is None and "beginner" not in ed.status_tail()
+        assert ed.run_key("view.range", {"range": "nope"}).startswith("Singing range:") and g.profile is None

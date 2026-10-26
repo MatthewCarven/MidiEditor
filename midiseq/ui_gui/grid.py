@@ -37,6 +37,7 @@ class GridWidget:
         self.view = GridView(song, zoom, self.index)
         self.ghosts = ghosts
         self.scale: tuple[int, str] | None = None     # shade the rows outside this key, when set
+        self.profile: render.Profile | None = None    # the beginner profile, when on
         self._total_cells = 1                         # the song's length in cells, for the overview
         self.middle_c_octave = middle_c_octave
         self.layout = layout
@@ -102,6 +103,12 @@ class GridWidget:
         """The scale filter: (root pitch class, scale name), or None for none."""
         if scale != self.scale:
             self.scale = scale
+            self.dirty = True
+
+    def set_profile(self, profile: render.Profile | None) -> None:
+        """The beginner profile (solfege labels, the singing range shaded), or None."""
+        if profile != self.profile:
+            self.profile = profile
             self.dirty = True
 
     def set_middle_c(self, octave: int) -> None:
@@ -190,7 +197,7 @@ class GridWidget:
             self.song, self.track, zoom=self.zoom,
             first_bar=first_bar, last_bar=last_bar,
             low_pitch=low, high_pitch=high, ghosts=self.ghosts,
-            selection=self.selection, scale=self.scale,
+            selection=self.selection, scale=self.scale, profile=self.profile,
             middle_c_octave=self.middle_c_octave, index=self.index,
         )
         self._col_index = {c.cell: i for i, c in enumerate(self.matrix.columns)}

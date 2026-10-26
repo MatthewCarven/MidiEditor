@@ -244,3 +244,21 @@ def test_overview_band_shows_the_view_and_the_playhead_in_the_whole_song():
     assert view.x1 == layout.gutter_w + width * 150 / 400
     assert head.role == "overview_playhead" and head.x0 == head.x1 == layout.gutter_w + width * 120 / 400
     assert overview_plan(layout, 0, 50, 40, 40, None) == []                 # the whole song is on screen
+
+
+def test_the_beginner_profile_puts_solfege_in_the_gutter_and_shades_outside_the_range():
+    from midiseq.core import io_midi
+    from midiseq.core.render import Profile, render
+    song = io_midi.load(BLUESY)
+    layout = Layout()
+    matrix = render(song, 2, first_bar=9, last_bar=9, low_pitch=58, high_pitch=71, ghosts=False,
+                    profile=Profile())
+    p = plan(matrix, layout, first_cell=0, width=WIDTH, height=HEIGHT)
+    texts = [item.text for item in p.items if isinstance(item, Label) and item.role.startswith("row_label")]
+    assert "DO" in texts and "re" in texts and "" not in texts            # home is DO; a blank label draws nothing
+    assert not any(ch.isdigit() for text in texts for ch in text)        # no note numbers in the gutter
+    roles = {item.role for item in p.items}
+    assert "out_of_range_row" in roles and "row_label_out_of_range" in roles
+    row = {r.pitch: i for i, r in enumerate(matrix.rows)}
+    edges = [item for item in p.items if isinstance(item, Line) and item.role == "range_edge"]
+    assert [(e.y0, e.x0) for e in edges] == [(layout.y_of(row[69]), 0), (layout.y_of(row[61]), 0)]  # ceiling, floor

@@ -121,6 +121,7 @@ class Row:
     accidental: bool        # shaded, so the black-key pattern reads at a glance
     cells: list[Cell]
     in_scale: bool | None = None  # under a scale filter: in the key, or not; None without one
+    in_range: bool | None = None  # under the beginner profile: inside the singing range; None without it
     off_grid_flag: bool = False   # the `~` gutter mark — "this row is drawn approximately"
 
 
@@ -180,9 +181,53 @@ GM_DRUMS = {
 }
 
 
-def row_label(pitch: int, drums: bool, middle_c_octave: int) -> str:
+# --------------------------------------------------------------------------
+# The beginner / child profile (PLAN.md section 7): solfege for the naturals,
+# the accidentals left blank rather than teaching a seven-year-old "di ri fi
+# si li", and no note numbers anywhere in the gutter. Middle C is "DO",
+# home - MIDI 60 whatever the middle-C setting calls it, since that setting
+# only moves the labels. The singing range does the real work: rows outside
+# it are shaded, so a child writes what they can sing.
+# --------------------------------------------------------------------------
+
+SOLFEGE = {0: "do", 2: "re", 4: "mi", 5: "fa", 7: "so", 9: "la", 11: "ti"}
+MIDDLE_C = 60
+
+#: D4-A4: the band children aged 5-7 sing comfortably (PLAN.md section 7).
+#: About an octave (C4-C5) by nine; C6 is out of reach for almost all of them.
+DEFAULT_SINGING_RANGE = (62, 69)
+
+
+@dataclass(frozen=True)
+class Profile:
+    """The beginner profile's one setting: the singing range, low to high,
+    as MIDI pitches. The labels follow from being in the profile at all."""
+
+    low: int = DEFAULT_SINGING_RANGE[0]
+    high: int = DEFAULT_SINGING_RANGE[1]
+
+    def __post_init__(self) -> None:
+        if self.low > self.high:                 # either order is fine
+            low, high = self.high, self.low
+            object.__setattr__(self, "low", low)
+            object.__setattr__(self, "high", high)
+
+    def contains(self, pitch: int) -> bool:
+        return self.low <= pitch <= self.high
+
+
+def solfege_label(pitch: int) -> str:
+    """``62 -> 're'``, ``60 -> 'DO'`` (middle C, home), ``61 -> ''``."""
+    if pitch == MIDDLE_C:
+        return "DO"
+    return SOLFEGE.get(pitch % 12, "")
+
+
+def row_label(pitch: int, drums: bool, middle_c_octave: int, profile: Profile | None = None) -> str:
     if drums:
         return GM_DRUMS.get(pitch, f"#{pitch}")
+    if profile is not None:
+        return solfege_label(pitch)
     return pitch_name(pitch, middle_c_octave)
 
 
@@ -205,6 +250,7 @@ def render(
     occupied_rows_only: bool = False,
     index: SongIndex | None = None,
     scale: tuple[int, str] | None = None,
+    profile: Profile | None = None,
 ) -> Matrix:
     """Build the cell-state matrix for one track.
 
@@ -212,6 +258,9 @@ def render(
     see but can't accidentally edit.
     ``scale`` (root pitch class, scale name) marks each row in or out of that
     key, for the views to shade; a drum track has no key.
+    ``profile`` is the beginner profile: solfege labels, blank accidentals,
+    and each row marked inside or outside its singing range. A drum track
+    keeps its names and is never out of range.
     """
     if not song.tracks:
         raise ValueError("song has no tracks")
@@ -284,11 +333,12 @@ def render(
     rows = [
         Row(
             pitch=p,
-            label=row_label(p, track.is_drums, middle_c_octave),
+            label=row_label(p, track.is_drums, middle_c_octave, profile),
             accidental=is_accidental(p),
             cells=[Cell() for _ in columns],
             in_scale=(None if scale is None or track.is_drums
                       else ((p - scale[0]) % 12) in SCALES.get(scale[1], ())),
+            in_range=(None if profile is None or track.is_drums else profile.contains(p)),
         )
         for p in pitches
     ]
@@ -370,4 +420,5 @@ def _paint(note, view: GridView, rows, row_of, col_of, selection, *, ghost: bool
 __all__ = [
     "render", "Matrix", "Row", "Column", "Cell", "Event", "Tie",
     "velocity_band", "dynamic_name", "row_label", "GM_DRUMS", "DYNAMICS",
+    "Profile", "solfege_label", "SOLFEGE", "DEFAULT_SINGING_RANGE",
 ]

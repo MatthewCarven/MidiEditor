@@ -42,9 +42,10 @@ from ..core import edit, io_midi
 from ..core.edit import REGISTRY, Command, NoteSpec
 from ..core.history import History
 from ..core.model import DEFAULT_VELOCITY, Note, Song, parse_pitch
+from ..core.render import DEFAULT_SINGING_RANGE, Profile
 from ..core.transport import Sink, Transport
 from ..ui_common import (VELOCITY_STEP, _count, bars_around, build_command, empty_song, key_text,
-                         loop_text, parse_key, velocity_change)
+                         loop_text, parse_key, parse_range, range_text, velocity_change)
 from .palette import Palette, prompts_for, tui_entries
 from .view import TextView
 
@@ -71,6 +72,7 @@ KEY_HELP = [
     "M                 metronome on/off: wood blocks on channel 10, the downbeat louder",
     "mouse             click a square: Enter there; Shift+click: S; click the ruler: playhead",
     "K                 scale filter: shade the rows outside the key (Key... sets it)",
+    "B                 beginner profile: do re mi in the gutter, the singing range shaded (Singing range... sets it)",
     "L                 loop: the selection's bars, or the cursor's; L again: off",
     ":                 the command palette          ?                 this table",
 ]
@@ -105,6 +107,8 @@ class Editor:
         self.path = path
         self.key_root, self.key_scale = 0, "major"   # for diatonic moves; C major until told
         self.scale_filter = False                    # K: shade the rows outside the key
+        self.beginner = False                        # B: solfege labels, the singing range shaded
+        self.singing_range = DEFAULT_SINGING_RANGE   # Singing range...: low, high
         self.saved_depth = 0
         self.message = ""
         self.quit_armed = False
@@ -284,6 +288,35 @@ class Editor:
     def _apply_scale(self) -> None:
         self.grid.set_scale((self.key_root, self.key_scale) if self.scale_filter else None)
 
+    def toggle_profile(self) -> str:
+        """B: the beginner profile - solfege in the gutter, blank accidentals,
+        the rows outside the singing range shaded - or the plain gutter."""
+        self.beginner = not self.beginner
+        self._apply_profile()
+        self.message = (f"Beginner profile: {self._range_text()}" if self.beginner
+                        else "Beginner profile off")
+        return self.message
+
+    def set_singing_range(self, text: str) -> str:
+        """Singing range...: ``D4-A4`` (the default; children of five to seven),
+        ``C4-C5`` (about an octave, by nine), or any two notes. Turns the
+        profile on, since the range is only ever seen through it."""
+        try:
+            self.singing_range = parse_range(text, self.grid.middle_c_octave)
+        except ValueError as exc:
+            self.message = f"Singing range: {exc}"
+            return self.message
+        self.beginner = True
+        self._apply_profile()
+        self.message = f"Singing range {self._range_text()}"
+        return self.message
+
+    def _apply_profile(self) -> None:
+        self.grid.set_profile(Profile(*self.singing_range) if self.beginner else None)
+
+    def _range_text(self) -> str:
+        return range_text(*self.singing_range, self.grid.middle_c_octave)
+
     def toggle_loop(self) -> str:
         """L: a loop over the selection's bars, else the cursor's bar; L
         again turns it off."""
@@ -369,6 +402,9 @@ class Editor:
             return True
         if name == "k":
             self.toggle_scale_filter()
+            return True
+        if name == "b":
+            self.toggle_profile()
             return True
         if name == "m":
             self.toggle_metronome()
@@ -859,6 +895,10 @@ class Editor:
             return self.set_key(raw.get("key", ""))
         if key == "view.scale_filter":
             return self.toggle_scale_filter()
+        if key == "view.profile":
+            return self.toggle_profile()
+        if key == "view.range":
+            return self.set_singing_range(raw.get("range", ""))
         if key == "transport.metronome":
             return self.toggle_metronome()
         if key == "edit.cut":
@@ -899,6 +939,8 @@ class Editor:
             parts.append(f"loop {loop_text(self.grid.view.bars, self.transport.loop)}")
         if self.scale_filter:
             parts.append(f"scale {key_text(self.key_root, self.key_scale)}")
+        if self.beginner:
+            parts.append(f"beginner {self._range_text()}")
         if self.transport.metronome:
             parts.append("click")
         if self.silent and self.sink_note:

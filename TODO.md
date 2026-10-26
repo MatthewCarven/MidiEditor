@@ -206,11 +206,11 @@ one layer up: **only what you actually changed changes.**
 - [ ] Maybe, later: a lenient reader for the 62 "data byte must be in range"
       files — old-game SysEx / running-status quirks that mido refuses. In the
       spirit of the thing; not a writer bug.
-- [ ] A realtime message inside a track (clock, active sensing - one NES rip has one)
+- [x] A realtime message inside a track (clock, active sensing - one NES rip has one)
       loads through mido, but mido's writer refuses to write it back (`realtime
       messages are not allowed in MIDI files`), so `seq check` calls the file
       unreadable. Dropping them from the passthrough on load would be honest: they
-      mean nothing in a file. Surfaced 2026-10-26.
+      mean nothing in a file. Surfaced 2026-10-26. *Dropped the same day, in `_absolute`, their delta still counting; the check ignores them the same way, and the rip (Maxhawk, whose stray byte is a stop) writes back.*
 - [x] **`seq check` is quadratic in notes per file.** `check_one` diffs
       `before[key]` against `after[key]` with `x not in <list>` — O(n·m) per
       field, so a file with a few thousand notes takes about a second and the

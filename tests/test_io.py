@@ -1168,3 +1168,41 @@ def test_a_format_0_file_with_several_tracks_is_the_format_1_file_it_is(tmp_path
     before, after = io_midi.musical_content(path), io_midi.musical_content(out)
     assert before == after
     assert sorted((n[2], n[3]) for n in after["notes"]) == [(660, 705), (675, 690)]
+
+
+def test_a_realtime_message_in_a_track_is_dropped_so_the_file_writes_back(tmp_path):
+    """Clock, start, stop and the like are wire traffic. mido reads one from a
+    file but its writer refuses to write it, which left a whole file
+    unsaveable for one stray byte. The loader drops them, their delta still
+    counting, and the check ignores them the same way. Hand-built, since mido
+    will not write the file either."""
+    import mido
+    from midiseq.core import io_midi
+
+    def varlen(n):
+        out = [n & 0x7F]
+        n >>= 7
+        while n:
+            out.insert(0, 0x80 | (n & 0x7F))
+            n >>= 7
+        return bytes(out)
+
+    track = b"".join([
+        varlen(0) + bytes([0x90, 60, 90]),             # note_on at 0
+        varlen(48) + bytes([0xF8]),                    # a clock, 48 ticks in
+        varlen(10) + bytes([0xFF, 0x11, 1, 7]),        # an unknown meta at 58: the walk steps over the clock
+        varlen(38) + bytes([0x80, 60, 0]),             # note_off at 96
+        varlen(0) + bytes([0xFF, 0x2F, 0]),            # end_of_track
+    ])
+    header = (6).to_bytes(4, "big") + (1).to_bytes(2, "big") + (1).to_bytes(2, "big") + (96).to_bytes(2, "big")
+    path = tmp_path / "clock.mid"
+    path.write_bytes(b"MThd" + header + b"MTrk" + len(track).to_bytes(4, "big") + track)
+    raw = mido.MidiFile(str(path)).tracks[0]
+    assert [m.type for m in raw] == ["note_on", "clock", "unknown_meta", "note_off", "end_of_track"]
+    song = io_midi.load(path)
+    assert [(n.pitch, n.start, n.end) for n in song.tracks[0].notes] == [(60, 0, 96)]
+    assert [(e.tick, e.message.type) for e in song.tracks[0].passthrough] == [(58, "unknown_meta")]
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)                            # mido would refuse to write the clock
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+    assert "clock" not in [m.type for m in mido.MidiFile(str(out)).tracks[0]]

@@ -1293,3 +1293,13 @@ merging them into the one track format 0 allows re-paired overlapping notes
 of one pitch across tracks. `_effective_format` calls such a file format 1,
 the writer keeps its tracks, and the check agrees. All eleven read
 identical. As a regression sample, the two NES folders' 4,748 files came back with nothing lost or invented: 4,416 identical and 332 that mido itself refuses, as before. Four tests. 504 tests.
+
+### Wire traffic in a file
+
+2026-10-26, later. The NES sample's one new refusal was ours to fix: a track
+with a stop byte in it (Maxhawk) loads through mido, but mido's writer refuses to
+write a realtime message, so the whole file was unsaveable for one stray
+byte. Clock, start, stop and the like are wire traffic and mean nothing in
+a file; `_absolute` drops them now, their delta still counting, and
+`musical_content` ignores them the same way. The test's file is built by
+hand, since mido will not write it either. One test. 505 tests.

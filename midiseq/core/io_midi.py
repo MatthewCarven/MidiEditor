@@ -211,6 +211,12 @@ def _absolute(mtrack) -> list[tuple[int, "mido.Message"]]:
     out, tick = [], 0
     for msg in mtrack:
         tick += msg.time
+        if msg.is_realtime:
+            # Clock, start, stop and the like are wire traffic and mean nothing
+            # in a file; mido reads one but its writer refuses to write it back,
+            # which left a whole file unsaveable for one stray byte. The delta
+            # still counts; the message does not.
+            continue
         out.append((tick, msg))
     return out
 
@@ -486,7 +492,7 @@ def musical_content(path: str | Path) -> dict:
         tick = 0
         for msg in mtrack:
             tick += msg.time
-            if msg.type == "end_of_track":
+            if msg.type == "end_of_track" or msg.is_realtime:   # the loader drops both
                 continue
             if msg.type in _SONG_LEVEL:
                 # A list, not a set: a tempo restated at a section boundary is a

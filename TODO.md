@@ -197,15 +197,20 @@ one layer up: **only what you actually changed changes.**
       Open one with `seq check -v` and diff the event streams. *2026-10-21: not invented - released. A note_on the file never releases is closed at the track's end (the loader's rule); the checker dropped such notes, so the release looked new. The checker closes them the same way now, and a format 0 channel is handed the file's end so it closes at the right tick.*
 - [x] **Bug: tempo/meter event lost** — 15 files (Landstalker, Sonic 1, Illusion
       of Gaia, Super Mario Kart). `_dedupe` is the first suspect. *2026-10-21: it was the checker counting the model's same-tick dedupe as a loss; fixed on 2026-10-19 with `musical_content` keeping the last word per tick. Zero in these folders now.*
-- [ ] **mido reads an unknown meta's delta as zero** (its `build_meta_message` drops
+- [x] **mido reads an unknown meta's delta as zero** (its `build_meta_message` drops
       it), so everything after such a meta loads early - in every program built on
       mido, not just here. The writer parks unknown metas at the previous event's
       tick so a saved file does not drift again (2026-10-21), but the original loss
       stands: 18 of the library's 40,196 files carry one with a delta (Balloon Fight
-      has 3,554 of them). A raw walk of the track bytes would recover the deltas.
+      has 3,554 of them). A raw walk of the track bytes would recover the deltas. *2026-10-26: recovered. The loader walks the file's own bytes the way mido does and puts the deltas back (nothing is touched if the walk and mido disagree anywhere); the writer writes them again and sorts an unknown meta last in its tick, so a reader without the walk still gets a zero; the check compares by tick. Most of the drift was ours, not mido's - see the worklog. All eleven files to hand read identical.*
 - [ ] Maybe, later: a lenient reader for the 62 "data byte must be in range"
       files — old-game SysEx / running-status quirks that mido refuses. In the
       spirit of the thing; not a writer bug.
+- [ ] A realtime message inside a track (clock, active sensing - one NES rip has one)
+      loads through mido, but mido's writer refuses to write it back (`realtime
+      messages are not allowed in MIDI files`), so `seq check` calls the file
+      unreadable. Dropping them from the passthrough on load would be honest: they
+      mean nothing in a file. Surfaced 2026-10-26.
 - [x] **`seq check` is quadratic in notes per file.** `check_one` diffs
       `before[key]` against `after[key]` with `x not in <list>` — O(n·m) per
       field, so a file with a few thousand notes takes about a second and the

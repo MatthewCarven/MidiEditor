@@ -1267,3 +1267,29 @@ Singing range... with `C4-C5` should widen the band and tick the menu's
 check. In the terminal, the same B, then `:sing` for the prompt; the
 gutter should stay four wide and the `>` cursor mark still show on a
 blank accidental row.
+
+### The deltas mido drops, recovered - and what the drift really was
+
+2026-10-26. The TODO's shape of the fix held. `_read_file` loads through
+mido and, when a file carries an unknown meta, walks its own bytes the way
+mido's `read_track` does - chunk sizes, running status, sysex lengths - and
+puts the dropped deltas back on the `UnknownMetaMessage`s; if the walk and
+mido disagree anywhere (track count, event count, any other delta, a type
+byte) nothing is touched and the file reads as mido read it. The writer
+writes the deltas again and the checker compares unknown metas by tick like
+anything else.
+
+The eleven drifting files to hand told a fuller story than the TODO's.
+Three (the DG rips) had unknown metas with real deltas and now load right.
+Five (Balloon Fight, Flashback, Super Mario Castle, vampire_killer) carry
+thousands of unknown metas whose deltas are all zero - the drift there was
+ours: `_events_for` ranked them with the rest of the passthrough, ahead of
+the note_ons at their tick, so our file handed them the tick's delta, mido
+dropped it on the next read, and every note at that tick came early. They
+rank last in their tick now (`_RANK_UNKNOWN_META`), so a reader without the
+walk still sees a zero. The last two (Golgo 13, FSV4Vecanti) have no
+unknown metas at all: they are format 0 files with a dozen tracks, and
+merging them into the one track format 0 allows re-paired overlapping notes
+of one pitch across tracks. `_effective_format` calls such a file format 1,
+the writer keeps its tracks, and the check agrees. All eleven read
+identical. As a regression sample, the two NES folders' 4,748 files came back with nothing lost or invented: 4,416 identical and 332 that mido itself refuses, as before. Four tests. 504 tests.

@@ -61,8 +61,8 @@ _STRUCTURAL = {"end_of_track"}
 
 def load(path: str | Path) -> Song:
     """Read a MIDI file into the model."""
-    mid = mido.MidiFile(str(path))
-    song = Song(ppq=mid.ticks_per_beat, midi_format=mid.type,
+    mid = _read_file(path)
+    song = Song(ppq=mid.ticks_per_beat, midi_format=_effective_format(mid),
                 title=Path(path).stem)
     # The file's own tempo and meter, not ours. See Song.clear_maps.
     song.clear_maps()
@@ -78,6 +78,132 @@ def load(path: str | Path) -> Song:
 
     song.normalise()
     return song
+
+
+# --------------------------------------------------------------------------
+# Reading - mido, plus the deltas it drops
+# --------------------------------------------------------------------------
+
+# Data bytes after each status byte - the MIDI spec, which is also what mido's
+# SPEC_BY_STATUS says, so a walk with these lines up with mido's.
+_CHANNEL_DATA = {0x80: 2, 0x90: 2, 0xA0: 2, 0xB0: 2, 0xC0: 1, 0xD0: 1, 0xE0: 2}
+_SYSTEM_DATA = {0xF1: 1, 0xF2: 2, 0xF3: 1, 0xF6: 0, 0xF8: 0, 0xFA: 0, 0xFB: 0,
+                0xFC: 0, 0xFE: 0}
+
+
+def _read_file(path: str | Path) -> "mido.MidiFile":
+    """mido's reading of the file, with the deltas mido drops put back.
+
+    mido (1.3.3) builds an unknown meta without its delta - ``build_meta_message``
+    has a TODO where the time should go - so every event after one loads early,
+    in every program built on mido. When a file carries any, its own bytes are
+    walked the way mido walks them and the deltas restored. A walk that
+    disagrees with mido anywhere restores nothing: the file then reads as mido
+    read it, which is what every other mido program hears.
+    """
+    mid = mido.MidiFile(str(path))
+    if any(msg.type == "unknown_meta" for mtrack in mid.tracks for msg in mtrack):
+        _restore_unknown_meta_deltas(mid, Path(path).read_bytes())
+    return mid
+
+
+def _effective_format(mid: "mido.MidiFile") -> int:
+    """A format 0 file with more than one track is a format 1 file whose header
+    word lies. Every reader takes the tracks as they come, so the model does
+    too - and saving it as what it is keeps each track's note pairing apart,
+    where merging into the one track format 0 allows would re-pair overlapping
+    notes of one pitch across tracks."""
+    return 1 if mid.type == 0 and len(mid.tracks) > 1 else mid.type
+
+
+def _walk_deltas(data: bytes) -> list[list[tuple[int, int | None]]] | None:
+    """Each event's (delta, meta type byte or None), per track, read from the
+    bytes exactly as mido reads them - the chunk sizes, running status, sysex
+    lengths and all - so the two line up event for event. None when the bytes
+    do not parse that way (mido would not have loaded them either)."""
+
+    def varlen(pos: int) -> tuple[int, int]:
+        value = 0
+        while True:
+            byte = data[pos]
+            pos += 1
+            value = (value << 7) | (byte & 0x7F)
+            if byte < 0x80:
+                return value, pos
+
+    try:
+        if data[:4] != b"MThd":
+            return None
+        num_tracks = int.from_bytes(data[10:12], "big")
+        pos = 8 + int.from_bytes(data[4:8], "big")
+        tracks: list[list[tuple[int, int | None]]] = []
+        for _ in range(num_tracks):
+            if data[pos:pos + 4] != b"MTrk":
+                return None
+            end = pos + 8 + int.from_bytes(data[pos + 4:pos + 8], "big")
+            pos += 8
+            last_status = None
+            events: list[tuple[int, int | None]] = []
+            while pos != end:               # mido's test too; past the end it reads on
+                if pos > end:
+                    return None
+                delta, pos = varlen(pos)
+                status = data[pos]
+                pos += 1
+                peeked = 0
+                if status < 0x80:           # running status: that byte was data
+                    if last_status is None:
+                        return None
+                    peeked, status = 1, last_status
+                elif status != 0xFF:        # a meta leaves running status alone
+                    last_status = status
+                if status == 0xFF:
+                    meta_type = data[pos]
+                    length, pos = varlen(pos + 1)
+                    pos += length
+                    events.append((delta, meta_type))
+                    continue
+                if status in (0xF0, 0xF7):
+                    if peeked:
+                        return None
+                    length, pos = varlen(pos)
+                    pos += length
+                else:
+                    width = (_CHANNEL_DATA.get(status & 0xF0) if status < 0xF0
+                             else _SYSTEM_DATA.get(status))
+                    if width is None:
+                        return None
+                    pos += width - peeked
+                events.append((delta, None))
+            tracks.append(events)
+        return tracks
+    except IndexError:
+        return None
+
+
+def _restore_unknown_meta_deltas(mid: "mido.MidiFile", data: bytes) -> int:
+    """Put the walked deltas on the unknown metas mido built without them.
+
+    Everything else must agree first - track count, event count, every other
+    delta, every unknown meta's type byte - or nothing is touched. Returns how
+    many were restored."""
+    walked = _walk_deltas(data)
+    if walked is None or len(walked) != len(mid.tracks):
+        return 0
+    fixes = []
+    for mtrack, events in zip(mid.tracks, walked):
+        if len(mtrack) != len(events):
+            return 0
+        for msg, (delta, meta_type) in zip(mtrack, events):
+            if msg.type == "unknown_meta":
+                if msg.type_byte != meta_type:
+                    return 0
+                fixes.append((msg, delta))
+            elif msg.time != delta or msg.is_meta != (meta_type is not None):
+                return 0
+    for msg, delta in fixes:
+        msg.time = delta
+    return len(fixes)
 
 
 def _absolute(mtrack) -> list[tuple[int, "mido.Message"]]:
@@ -236,6 +362,12 @@ _RANK_NOTE_ON = 4
 #: leaving an unmatched off and a hanging on. Some exporters really do write
 #: these, and padding them to one tick would be inventing data.
 _RANK_ZERO_LENGTH_OFF = 5
+#: Last in its tick, so its written delta is zero whenever anything shares the
+#: tick. mido alone reads an unknown meta's delta as zero (see _read_file), so a
+#: zero is the one delta every program hears right; written first in the tick it
+#: would carry the tick's whole delta, and a mido-based reader would put every
+#: note at that tick early - which is what the library's drifting files were.
+_RANK_UNKNOWN_META = 6
 
 
 def save(song: Song, path: str | Path, *, midi_format: int | None = None) -> None:
@@ -297,7 +429,9 @@ def _events_for(track: Track, song: Song, *, conductor: bool) -> list[tuple]:
                 notated_32nd_notes_per_beat=change.notated_32nd_notes_per_beat)))
 
     for event in track.passthrough:
-        rank = _RANK_NAME if event.message.type == "track_name" else _RANK_OTHER
+        kind = event.message.type
+        rank = (_RANK_NAME if kind == "track_name"
+                else _RANK_UNKNOWN_META if kind == "unknown_meta" else _RANK_OTHER)
         out.append((event.tick, rank, event.order, event.message.copy()))
 
     for note in track.notes:
@@ -320,14 +454,6 @@ def _to_mido_track(events: list[tuple], end_hint: int) -> "mido.MidiTrack":
     events = sorted(events, key=lambda e: (e[0], e[1], e[2]))
     tick = 0
     for abs_tick, _rank, _tie, msg in events:
-        if msg.type == "unknown_meta":
-            # mido reads an unknown meta's delta as zero (its build_meta_message
-            # drops it), so written with one it would shift everything after it
-            # on the next read. Parked at the previous event's tick it costs
-            # only its own position, which no reader built on mido keeps anyway.
-            msg.time = 0
-            mtrack.append(msg)
-            continue
         msg.time = abs_tick - tick
         tick = abs_tick
         mtrack.append(msg)
@@ -350,7 +476,7 @@ def musical_content(path: str | Path) -> dict:
     unrelated events is not information. Diffing raw bytes would fail on all
     three and tell us nothing. This is the shape the guarantee is written in.
     """
-    mid = mido.MidiFile(str(path))
+    mid = _read_file(path)
     notes: list[tuple] = []
     others: list[tuple] = []
     meta: list[tuple] = []
@@ -377,9 +503,7 @@ def musical_content(path: str | Path) -> dict:
                     notes.append((msg.channel, msg.note, start, tick, vel,
                                   msg.velocity))
             else:
-                # An unknown meta's tick is not knowable through mido (its delta
-                # reads as zero), so it is compared by content alone.
-                others.append((0 if msg.type == "unknown_meta" else tick, msg.type, str(msg.bytes())))
+                others.append((tick, msg.type, str(msg.bytes())))
         for (channel, note), starts in open_notes.items():
             # Never released: the loader closes it at the track's end, so the
             # comparison does the same rather than calling the result invented.
@@ -390,7 +514,7 @@ def musical_content(path: str | Path) -> dict:
         last_word[item[:2]] = item
     return {
         "ppq": mid.ticks_per_beat,
-        "format": mid.type,
+        "format": _effective_format(mid),
         "tracks": len(mid.tracks),
         "notes": sorted(notes),
         "other": sorted(others),

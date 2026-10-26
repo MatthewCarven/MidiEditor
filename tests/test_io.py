@@ -1032,12 +1032,11 @@ def test_a_note_never_released_is_closed_at_the_files_end_in_every_channel(tmp_p
     io_midi.save(song, out)
     assert io_midi.musical_content(path)["notes"] == io_midi.musical_content(out)["notes"]
 
-
-def test_an_unknown_meta_does_not_shift_what_follows_it_on_the_next_read(tmp_path):
-    """mido reads an unknown meta's delta as zero, so a file written with one
-    would come back with everything after it early. The writer parks the
-    meta at the previous event's tick instead, and the check compares
-    unknown metas by content."""
+def test_an_unknown_meta_keeps_its_delta_and_so_does_everything_after_it(tmp_path):
+    """mido builds an unknown meta without its delta, so through mido alone
+    every event after one loads early. The loader walks the file's own bytes
+    and puts the deltas back, the writer writes them again, and the check
+    compares an unknown meta by tick like anything else."""
     import mido
     from midiseq.core import io_midi
     mid = mido.MidiFile(ticks_per_beat=96)
@@ -1045,17 +1044,127 @@ def test_an_unknown_meta_does_not_shift_what_follows_it_on_the_next_read(tmp_pat
     mid.tracks.append(t)
     t.append(mido.Message("note_on", note=60, velocity=90, time=0))
     t.append(mido.Message("note_off", note=60, velocity=0, time=96))
-    t.append(mido.UnknownMetaMessage(17, data=bytes([255]), time=48))   # mido reads this delta as 0
+    t.append(mido.UnknownMetaMessage(17, data=bytes([255]), time=48))
     t.append(mido.Message("note_on", note=62, velocity=90, time=48))
     t.append(mido.Message("note_off", note=62, velocity=0, time=96))
     path = tmp_path / "meta.mid"
     mid.save(str(path))
     song = io_midi.load(path)
+    notes = lambda s: [(n.pitch, n.start, n.end) for n in s.tracks[0].notes]
+    assert notes(song) == [(60, 0, 96), (62, 192, 288)]
+    assert [e.tick for e in song.tracks[0].passthrough
+            if e.message.type == "unknown_meta"] == [144]
     out = tmp_path / "rt.mid"
     io_midi.save(song, out)
-    again = io_midi.load(out)
-    notes = lambda s: [(n.pitch, n.start, n.end) for n in s.tracks[0].notes]
-    assert notes(again) == notes(song)                                  # no further drift
+    assert notes(io_midi.load(out)) == notes(song)
+    before, after = io_midi.musical_content(path), io_midi.musical_content(out)
+    assert before == after
+    assert [(tick, kind) for tick, kind, _ in after["other"]
+            if kind == "unknown_meta"] == [(144, "unknown_meta")]
+
+
+def test_the_delta_walk_lines_up_with_mido_through_running_status_sysex_and_metas(tmp_path):
+    """The walk must read the same events mido reads - running status, a
+    sysex's own length, known metas - or it would line a delta up with the
+    wrong message. A format 0 file, so the split's channels all move together."""
+    import mido
+    from midiseq.core import io_midi
+    mid = mido.MidiFile(type=0, ticks_per_beat=96)
+    t = mido.MidiTrack()
+    mid.tracks.append(t)
+    t.append(mido.MetaMessage("track_name", name="walk", time=0))
+    t.append(mido.Message("sysex", data=[0x41, 0x10, 0x42], time=5))
+    t.append(mido.Message("note_on", channel=0, note=60, velocity=90, time=0))
+    t.append(mido.Message("note_on", channel=0, note=64, velocity=90, time=0))   # running status
+    t.append(mido.UnknownMetaMessage(0x60, data=bytes([1, 2, 3]), time=30))
+    t.append(mido.Message("note_on", channel=3, note=36, velocity=100, time=10))
+    t.append(mido.Message("note_off", channel=0, note=60, velocity=0, time=51))
+    t.append(mido.Message("note_off", channel=0, note=64, velocity=0, time=0))
+    t.append(mido.Message("note_off", channel=3, note=36, velocity=0, time=0))
+    path = tmp_path / "walk.mid"
+    mid.save(str(path))
+    raw = mido.MidiFile(str(path)).tracks[0]
+    assert [m.time for m in raw if m.type == "unknown_meta"] == [0]     # what mido alone reads
+    song = io_midi.load(path)
+    notes = sorted((n.channel, n.pitch, n.start, n.end) for tr in song.tracks for n in tr.notes)
+    assert notes == [(0, 60, 5, 96), (0, 64, 5, 96), (3, 36, 45, 96)]
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)
     assert io_midi.musical_content(path) == io_midi.musical_content(out)
-    written = mido.MidiFile(str(out)).tracks[0]
-    assert [m.time for m in written if m.type == "unknown_meta"] == [0]
+
+
+def test_a_walk_that_disagrees_with_mido_restores_nothing(tmp_path):
+    """Safety: when the bytes and mido's reading do not line up, the file is
+    left as mido read it rather than half-corrected."""
+    import mido
+    from midiseq.core import io_midi
+    mid = mido.MidiFile(ticks_per_beat=96)
+    t = mido.MidiTrack()
+    mid.tracks.append(t)
+    t.append(mido.UnknownMetaMessage(17, data=bytes([1]), time=40))
+    t.append(mido.Message("note_on", note=60, velocity=90, time=0))
+    t.append(mido.Message("note_off", note=60, velocity=0, time=96))
+    path = tmp_path / "meta.mid"
+    mid.save(str(path))
+    loaded = mido.MidiFile(str(path))
+    assert io_midi._restore_unknown_meta_deltas(loaded, path.read_bytes()) == 1
+    assert loaded.tracks[0][0].time == 40
+    other = mido.MidiFile(str(path))
+    assert io_midi._restore_unknown_meta_deltas(other, b"MThd" + path.read_bytes()[4:20]) == 0
+    assert other.tracks[0][0].time == 0
+    assert io_midi._walk_deltas(b"RIFF") is None
+
+
+def test_an_unknown_meta_sharing_a_tick_is_written_after_the_notes_there(tmp_path):
+    """mido alone reads an unknown meta's delta as zero, so our file must never
+    hand one the tick's delta: written last in its tick it carries a zero, and
+    a reader without the walk still puts the notes where they were. (Written
+    first, the library's Balloon Fight pulled thousands of notes early.)"""
+    import mido
+    from midiseq.core import io_midi
+    mid = mido.MidiFile(ticks_per_beat=96)
+    t = mido.MidiTrack()
+    mid.tracks.append(t)
+    t.append(mido.Message("note_on", note=60, velocity=90, time=96))
+    t.append(mido.UnknownMetaMessage(17, data=bytes([1]), time=0))      # with the note, after it
+    t.append(mido.Message("note_off", note=60, velocity=0, time=96))
+    path = tmp_path / "shared.mid"
+    mid.save(str(path))
+    out = tmp_path / "rt.mid"
+    io_midi.save(io_midi.load(path), out)
+    tick, seen = 0, []
+    for m in mido.MidiFile(str(out)).tracks[0]:                          # mido alone, no walk
+        tick += m.time
+        seen.append((tick, m.type, m.time))
+    assert (96, "note_on", 96) in seen and (192, "note_off", 96) in seen
+    assert [(k, d) for _, k, d in seen if k == "unknown_meta"] == [("unknown_meta", 0)]
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+
+
+def test_a_format_0_file_with_several_tracks_is_the_format_1_file_it_is(tmp_path):
+    """Some rips say format 0 and carry a dozen tracks. Merged into the one track
+    format 0 allows, two tracks' overlapping notes of one pitch re-pair; kept as
+    tracks, each pairs its own. The model calls such a file format 1 and the
+    check agrees."""
+    import mido
+    from midiseq.core import io_midi
+    mid = mido.MidiFile(type=1, ticks_per_beat=60)
+    for start, end in ((660, 705), (675, 690)):
+        t = mido.MidiTrack()
+        mid.tracks.append(t)
+        t.append(mido.Message("note_on", note=71, velocity=127, time=start))
+        t.append(mido.Message("note_off", note=71, velocity=0, time=end - start))
+    path = tmp_path / "lying.mid"
+    mid.save(str(path))
+    data = path.read_bytes()
+    path.write_bytes(data[:8] + bytes([0, 0]) + data[10:])              # the header word says 0
+    assert mido.MidiFile(str(path)).type == 0
+    song = io_midi.load(path)
+    assert song.midi_format == 1 and len(song.tracks) == 2
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)
+    again = mido.MidiFile(str(out))
+    assert again.type == 1 and len(again.tracks) == 2
+    before, after = io_midi.musical_content(path), io_midi.musical_content(out)
+    assert before == after
+    assert sorted((n[2], n[3]) for n in after["notes"]) == [(660, 705), (675, 690)]

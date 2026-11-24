@@ -1362,3 +1362,61 @@ summary no longer throws the run away. And `_run` counts what the pool
 yielded before it died, so the one-process fallback carries on from there
 instead of checking every file again and counting the first ones twice.
 Two tests. 507 tests.
+
+### The lenient reader - buckets 1 to 3
+
+2026-11-25, a side session. When `mido.MidiFile` refuses a file, `_read_file`
+now reads it itself: `_read_leniently` walks the bytes and builds a mido
+message for each event, and both `load` and `musical_content` go through it,
+so a rescued file reads the same way on both sides of the round trip. The
+walk is the one `_restore_unknown_meta_deltas` already used, now `_walk`,
+giving `(delta, status, payload)` per event with the header's format and
+division; `_walk_deltas` is its old view. Checked against the committed walker
+over 3,480 library files (the Old Midi Collection, the DS and NES folders):
+every file walks identically. The one departure from mido is a flag the
+lenient reader sets, `end_of_track_ends`: `FF 2F` ends the track and the walk
+skips to the chunk's declared end. mido reads on, and a stray byte there is
+what sent it off the end of every Settlers 2 file.
+
+The messages are built the way mido's own reader builds them -
+`Message.from_bytes` for channel and system messages, `Message('sysex')` with
+the start and end bytes stripped, `build_meta_message` for metas, under the
+same `latin1` charset - with two steps mido will not take:
+
+- **A meta mido cannot decode is carried as an `UnknownMetaMessage` with its
+  raw bytes.** In the library that is the 51 key signatures (mode 255, 32
+  flats, 30 sharps...). The except clause also covers a byte that is not
+  there, a SMPTE frame-rate code without a name and a value out of range: the
+  bytes are kept either way. The writer already puts an unknown meta last in
+  its tick, so it writes back byte for byte, and mido refuses the saved file
+  just as it refused the original, which is fine: the check reads both sides
+  through `_read_file`. All 46 example files in `report.json` come back
+  identical; TrueLoveSong10 carries twenty of them.
+- **A time signature short of its four bytes reads as the numerator and
+  denominator it has**, with the spec's defaults - 24 clocks per click, eight
+  32nds to the quarter - for the bytes it hasn't. Not an unknown meta: that
+  would leave the grid on 4/4 for a file that says 3/4, and write a default
+  meter beside the raw one. Anno_Main_Theme's `FF 58 02 04 02` reads as 4/4,
+  24, 8, which is what the writer puts back; the saved meta is four bytes
+  long, so it changes shape but says the same thing, and the check agrees.
+
+**A data byte over 127 is still refused, on purpose.** `from_bytes` and the
+SysEx check raise as mido does, the lenient reader gives the file up, and
+`_read_file` re-raises mido's own error, so Descent's twelve examples and
+sfa2ryu read exactly as before. Anything else the walk cannot place - a
+truncated file, a file that is not MIDI at all - does the same: a file is
+read whole or not at all, never half.
+
+Six new tests build each fault from bytes, as the realtime test does
+(`varlen` and `raw_midi` live beside them); 513 pass. `seq check` over the
+folders: Settlers 2, 14 of 14 identical; the DS folder, 726 of 728, the two
+left being data bytes over 127; the NES folder, 1,621 identical, 275 not
+MIDI, 15 data bytes over 127, and no key signature refusal left.
+
+**For Matthew:** the one decision in the TODO is the data byte over 127 - 246
+Descent files (`B0 6D 80`, `B0 6E FF`, `B0 6F 80`, HMI's loop controllers)
+and 9 SysEx payloads. Either keep each byte exactly in the file and hold it
+back from the synth (`0xFF` on the wire is a System Reset, `0x80` a
+note-off), or clip it to 127 the way mido's `clip=True` does. `_message` in
+`io_midi.py` is the one place a data byte is checked, so either answer lands
+there.

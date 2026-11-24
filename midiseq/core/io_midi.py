@@ -22,9 +22,11 @@ costs in this file is the ordering rules in ``_events_for`` and the two hints on
 
 from __future__ import annotations
 
+import struct
 from pathlib import Path
 
 import mido
+from mido.midifiles.meta import build_meta_message, meta_charset
 
 from .model import (
     OpaqueEvent,
@@ -81,7 +83,7 @@ def load(path: str | Path) -> Song:
 
 
 # --------------------------------------------------------------------------
-# Reading - mido, plus the deltas it drops
+# Reading - mido, plus the deltas it drops and the faults it will not step over
 # --------------------------------------------------------------------------
 
 # Data bytes after each status byte - the MIDI spec, which is also what mido's
@@ -91,8 +93,16 @@ _SYSTEM_DATA = {0xF1: 1, 0xF2: 2, 0xF3: 1, 0xF6: 0, 0xF8: 0, 0xFA: 0, 0xFB: 0,
                 0xFC: 0, 0xFE: 0}
 
 
+#: What mido raises on a file it will not read: not a MIDI file, a chunk cut
+#: short, a data byte over 127, a meta its decoders cannot place. Anything
+#: else out of ``mido.MidiFile`` is a bug and propagates.
+_MIDO_REFUSALS = (OSError, EOFError, IndexError, KeyError, ValueError,
+                  mido.KeySignatureError)
+
+
 def _read_file(path: str | Path) -> "mido.MidiFile":
-    """mido's reading of the file, with the deltas mido drops put back.
+    """mido's reading of the file, with the deltas mido drops put back - or,
+    when mido refuses the file, our own reading of its bytes.
 
     mido (1.3.3) builds an unknown meta without its delta - ``build_meta_message``
     has a TODO where the time should go - so every event after one loads early,
@@ -100,8 +110,20 @@ def _read_file(path: str | Path) -> "mido.MidiFile":
     walked the way mido walks them and the deltas restored. A walk that
     disagrees with mido anywhere restores nothing: the file then reads as mido
     read it, which is what every other mido program hears.
+
+    When mido will not read the file at all, ``_read_leniently`` walks the same
+    bytes and steps over the faults it knows; when it cannot, mido's own
+    refusal is raised, as before. Both ``load`` and ``musical_content`` read
+    through here, so a rescued file reads the same way on both sides of a
+    round trip.
     """
-    mid = mido.MidiFile(str(path))
+    try:
+        mid = mido.MidiFile(str(path))
+    except _MIDO_REFUSALS:
+        rescued = _read_leniently(path)
+        if rescued is None:
+            raise
+        return rescued
     if any(msg.type == "unknown_meta" for mtrack in mid.tracks for msg in mtrack):
         _restore_unknown_meta_deltas(mid, Path(path).read_bytes())
     return mid
@@ -116,11 +138,20 @@ def _effective_format(mid: "mido.MidiFile") -> int:
     return 1 if mid.type == 0 and len(mid.tracks) > 1 else mid.type
 
 
-def _walk_deltas(data: bytes) -> list[list[tuple[int, int | None]]] | None:
-    """Each event's (delta, meta type byte or None), per track, read from the
-    bytes exactly as mido reads them - the chunk sizes, running status, sysex
-    lengths and all - so the two line up event for event. None when the bytes
-    do not parse that way (mido would not have loaded them either)."""
+def _walk(data: bytes, *, end_of_track_ends: bool = False
+          ) -> tuple[tuple[int, int], list[list[tuple]]] | None:
+    """The header's (format, division) and every event per track, read from
+    the bytes exactly as mido reads them - the chunk sizes, running status,
+    sysex lengths and all - so the two line up event for event. An event is
+    ``(delta, status, payload)``: a meta's payload is ``(type byte, data)``, a
+    sysex's the length-counted bytes, anything else's its data bytes. None
+    when the bytes do not parse that way (mido would not have loaded them
+    either).
+
+    ``end_of_track_ends`` is the one departure from mido, for the lenient
+    reader: mido reads on past an end-of-track to the chunk's declared end,
+    and a stray byte there (Settlers 2 leaves one) sends it off the end of
+    the file. With the flag the track ends where it says it does."""
 
     def varlen(pos: int) -> tuple[int, int]:
         value = 0
@@ -131,19 +162,29 @@ def _walk_deltas(data: bytes) -> list[list[tuple[int, int | None]]] | None:
             if byte < 0x80:
                 return value, pos
 
+    def take(pos: int, count: int) -> tuple[bytes, int]:
+        if pos + count > len(data):     # a slice would quietly come up short
+            raise IndexError
+        return data[pos:pos + count], pos + count
+
     try:
         if data[:4] != b"MThd":
             return None
-        num_tracks = int.from_bytes(data[10:12], "big")
-        pos = 8 + int.from_bytes(data[4:8], "big")
-        tracks: list[list[tuple[int, int | None]]] = []
+        header_size = int.from_bytes(data[4:8], "big")
+        if header_size < 6 or len(data) < 8 + header_size:
+            return None
+        # Signed shorts, as mido reads them: a SMPTE division comes out
+        # negative, and the model keeps it so (Song.is_smpte).
+        fmt, num_tracks, division = struct.unpack(">hhh", data[8:14])
+        pos = 8 + header_size
+        tracks: list[list[tuple]] = []
         for _ in range(num_tracks):
             if data[pos:pos + 4] != b"MTrk":
                 return None
             end = pos + 8 + int.from_bytes(data[pos + 4:pos + 8], "big")
             pos += 8
             last_status = None
-            events: list[tuple[int, int | None]] = []
+            events: list[tuple] = []
             while pos != end:               # mido's test too; past the end it reads on
                 if pos > end:
                     return None
@@ -160,25 +201,37 @@ def _walk_deltas(data: bytes) -> list[list[tuple[int, int | None]]] | None:
                 if status == 0xFF:
                     meta_type = data[pos]
                     length, pos = varlen(pos + 1)
-                    pos += length
-                    events.append((delta, meta_type))
+                    meta_data, pos = take(pos, length)
+                    events.append((delta, status, (meta_type, meta_data)))
+                    if end_of_track_ends and meta_type == 0x2F:
+                        pos = end
                     continue
                 if status in (0xF0, 0xF7):
                     if peeked:
                         return None
                     length, pos = varlen(pos)
-                    pos += length
+                    payload, pos = take(pos, length)
                 else:
                     width = (_CHANNEL_DATA.get(status & 0xF0) if status < 0xF0
                              else _SYSTEM_DATA.get(status))
                     if width is None:
                         return None
-                    pos += width - peeked
-                events.append((delta, None))
+                    payload, pos = take(pos - peeked, width)
+                events.append((delta, status, payload))
             tracks.append(events)
-        return tracks
+        return (fmt, division), tracks
     except IndexError:
         return None
+
+
+def _walk_deltas(data: bytes) -> list[list[tuple[int, int | None]]] | None:
+    """Each event's (delta, meta type byte or None), per track: the view of the
+    walk that ``_restore_unknown_meta_deltas`` checks mido's reading against."""
+    walked = _walk(data)
+    if walked is None:
+        return None
+    return [[(delta, payload[0] if status == 0xFF else None)
+             for delta, status, payload in events] for events in walked[1]]
 
 
 def _restore_unknown_meta_deltas(mid: "mido.MidiFile", data: bytes) -> int:
@@ -204,6 +257,92 @@ def _restore_unknown_meta_deltas(mid: "mido.MidiFile", data: bytes) -> int:
     for msg, delta in fixes:
         msg.time = delta
     return len(fixes)
+
+
+# --------------------------------------------------------------------------
+# Reading - the files mido refuses
+# --------------------------------------------------------------------------
+
+#: A time signature's four data bytes as the spec defaults them: 4/4 (the
+#: denominator as a power of two), 24 clocks per metronome click, eight 32nds
+#: to the quarter note. What a short one is padded with.
+_TIME_SIGNATURE_DEFAULTS = (4, 2, 24, 8)
+#: How mido's meta decoders give up: a key no table names, a byte that is not
+#: there, a frame-rate code without a name, a value out of range.
+_META_DECODE_FAILURES = (mido.KeySignatureError, IndexError, KeyError,
+                         ValueError, TypeError)
+
+
+def _read_leniently(path: str | Path) -> "mido.MidiFile | None":
+    """Our own reading of a file mido refuses: its bytes walked the way mido
+    walks them and a mido message built for each event, stepping over the
+    faults the library turned up (the 18 November run; TODO has the buckets).
+
+    - A key signature mido cannot name - mode 255, 32 flats, 30 sharps: one
+      garbage meta in a good song, 51 files - is carried as an unknown meta
+      with its raw bytes, so it writes back byte for byte; the key filter
+      simply does not hear it. Any other meta mido cannot decode goes the
+      same way.
+    - A track that carries on after its end-of-track ends there. Settlers 2
+      leaves one stray ``00`` inside the chunk's declared length (20 files),
+      which mido reads as the next delta before running off the end of the
+      file.
+    - A time signature two bytes short (Anno_Main_Theme) reads as the
+      numerator and denominator it has, with the spec's defaults for the
+      clocks-per-click and 32nds it hasn't.
+
+    A data byte over 127 - Descent's HMI loop controllers, a SysEx payload in
+    sfa2ryu - is still refused: keeping it exactly or clipping it is Matthew's
+    decision (TODO). Anything else the walk cannot read gives None, and the
+    caller raises mido's own refusal: a file is read whole or not at all.
+    """
+    try:
+        walked = _walk(Path(path).read_bytes(), end_of_track_ends=True)
+        if walked is None:
+            return None
+        (fmt, division), tracks = walked
+        # The constructor checks the format word; mido's own loader sets both
+        # fields after it, from the header as it is.
+        mid = mido.MidiFile()
+        mid.type, mid.ticks_per_beat = fmt, division
+        with meta_charset("latin1"):    # what mido.MidiFile decodes text metas with
+            for events in tracks:
+                mtrack = mido.MidiTrack()
+                for delta, status, payload in events:
+                    mtrack.append(_message(delta, status, payload))
+                mid.tracks.append(mtrack)
+        return mid
+    except _MIDO_REFUSALS:
+        return None
+
+
+def _message(delta: int, status: int, payload) -> "mido.Message":
+    """One mido message from one walked event, built as mido's reader builds it."""
+    if status == 0xFF:
+        return _meta_message(*payload, delta)
+    if status in (0xF0, 0xF7):
+        data = list(payload)
+        if data and data[0] == 0xF0:        # mido strips the start and end bytes
+            data = data[1:]
+        if data and data[-1] == 0xF7:
+            data = data[:-1]
+        return mido.Message("sysex", data=data, time=delta)
+    return mido.Message.from_bytes([status, *payload], time=delta)
+
+
+def _meta_message(meta_type: int, data: bytes, delta: int) -> "mido.MetaMessage":
+    """A meta as mido builds it - or carried raw where mido cannot decode it."""
+    try:
+        msg = build_meta_message(meta_type, data, delta)
+    except _META_DECODE_FAILURES:
+        if meta_type == 0x58:
+            # A short time signature still says its numerator and denominator;
+            # the spec defaults the rest.
+            return build_meta_message(
+                meta_type, [*data, *_TIME_SIGNATURE_DEFAULTS[len(data):]], delta)
+        msg = mido.UnknownMetaMessage(meta_type, data)
+    msg.time = delta        # mido builds an unknown meta without its delta (see _read_file)
+    return msg
 
 
 def _absolute(mtrack) -> list[tuple[int, "mido.Message"]]:

@@ -353,6 +353,13 @@ Wildcards are expanded by `seq` itself rather than by the shell, so `*.mid` work
 on Windows too. Folders are walked recursively. One unreadable file is reported
 and the run carries on.
 
+Three faults mido alone refuses are stepped over, so the file loads and writes
+back: a key signature mido cannot name (mode 255, 32 flats) is carried as raw
+bytes and written back exactly; a track that carries on after its end-of-track
+ends there; a time signature two bytes short is read as the numerator and
+denominator it has, with the spec's defaults for the rest. A file that is not
+MIDI, or that carries a data byte over 127, is still refused.
+
 ### On a real library
 
 Past 200 files it stops listing files and starts listing **problem kinds**, because

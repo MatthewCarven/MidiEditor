@@ -207,19 +207,33 @@ one layer up: **only what you actually changed changes.**
       mido before the loader runs a line; none are ours. 348 aren't MIDI at all
       (damaged downloads). The other 327 are real songs with one fault mido won't
       step over. Examples for each bucket are in that run's `report.json`;
-      WORKLOG has the detail.
-  - [ ] **51 key signatures mido can't name** (mode 255, 253, 162...; 32 and 128
+      WORKLOG has the detail. *2026-11-25: when mido refuses a file,
+      `_read_leniently` in `io_midi.py` walks the bytes itself and steps over
+      the three faults below that needed no decision; the data bytes over 127
+      wait on it.*
+  - [x] **51 key signatures mido can't name** (mode 255, 253, 162...; 32 and 128
         flats; 30 sharps). Carry the meta as an unknown with its raw bytes so it
-        writes back exactly; the key filter simply doesn't hear it.
-  - [ ] **20 Settlers 2 tracks with one stray byte after end-of-track.**
-        End-of-track ends the track; the trailing `00` means nothing.
+        writes back exactly; the key filter simply doesn't hear it. *Done
+        2026-11-25: any meta mido can't decode is carried as an
+        `UnknownMetaMessage` with its bytes. All 46 example files come back
+        identical; mido refuses the saved file the same way, so the check reads
+        both sides our way.*
+  - [x] **20 Settlers 2 tracks with one stray byte after end-of-track.**
+        End-of-track ends the track; the trailing `00` means nothing. *Done
+        2026-11-25: the lenient walk skips from `FF 2F` to the chunk's declared
+        end; the folder's 14 files come back identical.*
   - [ ] **255 data bytes over 127** - 246 in channel messages (Descent's HMI loop
         controllers: `B0 6D 80`, `B0 6E FF`, `B0 6F 80`) and 9 inside a SysEx
         (sfa2ryu). **Decision for Matthew:** keep each byte exactly in the file
         but never send it to the synth (a `0xFF` on the wire is a System Reset),
-        or clip it to 127 the way mido's `clip=True` does.
-  - [ ] **1 time signature two bytes short** (Anno_Main_Theme). Read the
-        numerator and denominator that are there.
+        or clip it to 127 the way mido's `clip=True` does. *Still refused on
+        2026-11-25, on purpose: the lenient reader gives the file up at the byte
+        and mido's own error is raised, as before, until the decision is made.
+        `_message` in `io_midi.py` is where either answer lands.*
+  - [x] **1 time signature two bytes short** (Anno_Main_Theme). Read the
+        numerator and denominator that are there. *Done 2026-11-25: with the
+        spec's 24 clocks per click and eight 32nds for the two bytes it hasn't;
+        the writer puts a full one back and the check agrees.*
 - [x] `seq check` writes the report *after* printing the summary, so a failure
       while printing throws away a long run. Save first, print second. *Done 2026-11-25: saved first, printed second.*
 - [x] `seq check`'s `_run` fallback re-checks every file if the process pool dies

@@ -1206,3 +1206,133 @@ def test_a_realtime_message_in_a_track_is_dropped_so_the_file_writes_back(tmp_pa
     io_midi.save(song, out)                            # mido would refuse to write the clock
     assert io_midi.musical_content(path) == io_midi.musical_content(out)
     assert "clock" not in [m.type for m in mido.MidiFile(str(out)).tracks[0]]
+
+
+# --------------------------------------------------------------------------
+# The files mido refuses - built from bytes, since mido will not write them either
+# --------------------------------------------------------------------------
+
+def varlen(n):
+    """A MIDI variable-length quantity."""
+    out = [n & 0x7F]
+    n >>= 7
+    while n:
+        out.insert(0, 0x80 | (n & 0x7F))
+        n >>= 7
+    return bytes(out)
+
+
+def raw_midi(path, *bodies, ppq=96, fmt=1):
+    """A file from raw track bodies; each chunk declares its body's length."""
+    header = (b"MThd" + (6).to_bytes(4, "big") + fmt.to_bytes(2, "big")
+              + len(bodies).to_bytes(2, "big") + ppq.to_bytes(2, "big"))
+    path.write_bytes(header + b"".join(
+        b"MTrk" + len(body).to_bytes(4, "big") + body for body in bodies))
+    return path
+
+
+def test_a_key_signature_mido_cannot_name_is_carried_raw_and_written_back(tmp_path):
+    """51 library files (ff1cave1, DPDIALGA, livealive-wilds...) carry one key
+    signature no table names - mode 255, 32 flats, 30 sharps - and mido refuses
+    the whole song over it. It is a meta like any other the model does not
+    read: carried as an unknown with its bytes and written back byte for byte.
+    The saved file is refused by mido just the same, so the check reads both
+    sides of the round trip our way."""
+    body = b"".join([
+        varlen(0) + bytes([0xFF, 0x58, 4, 3, 2, 24, 8]),     # 3/4: a meter is read past the fault
+        varlen(0) + bytes([0xFF, 0x59, 2, 0xFC, 0xFF]),      # 4 flats, mode 255 - ff1cave1's
+        varlen(0) + bytes([0x90, 60, 90]),
+        varlen(96) + bytes([0x80, 60, 0]),
+        varlen(0) + bytes([0xFF, 0x59, 2, 0xE0, 0x01]),      # 32 flats, mode 1 - DPDIALGA's
+        varlen(0) + bytes([0xFF, 0x2F, 0]),
+    ])
+    path = raw_midi(tmp_path / "key.mid", body)
+    with pytest.raises(mido.KeySignatureError):
+        mido.MidiFile(str(path))
+    song = io_midi.load(path)
+    assert [(n.pitch, n.start, n.end) for n in song.tracks[0].notes] == [(60, 0, 96)]
+    assert (song.timesig_map[0].numerator, song.timesig_map[0].denominator) == (3, 4)
+    carried = [(e.tick, e.message.type_byte, e.message.data) for e in song.tracks[0].passthrough]
+    assert carried == [(0, 0x59, (0xFC, 0xFF)), (96, 0x59, (0xE0, 0x01))]
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)
+    saved = out.read_bytes()
+    assert saved.count(bytes([0xFF, 0x59, 2, 0xFC, 0xFF])) == 1
+    assert saved.count(bytes([0xFF, 0x59, 2, 0xE0, 0x01])) == 1
+    with pytest.raises(mido.KeySignatureError):
+        mido.MidiFile(str(out))
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+
+
+def test_a_track_that_carries_on_after_its_end_of_track_ends_there(tmp_path):
+    """Every Settlers 2 file ends its one track properly with FF 2F 00 and then
+    carries a single 00 inside the chunk's declared length. mido reads it as
+    the next delta and runs off the end of the file. End-of-track ends the
+    track; the byte means nothing and is not written back. The trailing
+    silence before the marker is real and survives."""
+    body = b"".join([
+        varlen(0) + bytes([0x90, 60, 90]),
+        varlen(96) + bytes([0x80, 60, 0]),
+        varlen(48) + bytes([0xFF, 0x2F, 0]),
+        bytes([0]),                                          # the stray byte, inside the chunk
+    ])
+    path = raw_midi(tmp_path / "settlers.mid", body, ppq=255, fmt=0)
+    with pytest.raises(EOFError):
+        mido.MidiFile(str(path))
+    song = io_midi.load(path)
+    assert song.midi_format == 0 and song.ppq == 255
+    assert [(n.pitch, n.start, n.end) for n in song.tracks[0].notes] == [(60, 0, 96)]
+    assert song.tracks[0].end_tick_hint == 144
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)
+    again = mido.MidiFile(str(out))                          # clean now: mido reads it
+    assert [(m.type, m.time) for m in again.tracks[0]] == [
+        ("note_on", 0), ("note_off", 96), ("end_of_track", 48)]
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+
+
+def test_a_time_signature_two_bytes_short_reads_its_numerator_and_denominator(tmp_path):
+    """Anno_Main_Theme (DS) writes FF 58 02 04 02: a time signature that stops
+    after the numerator and denominator, and mido refuses the file reading the
+    third byte of two. The two bytes there are the meter; the two missing get
+    the spec's defaults, 24 clocks per click and eight 32nds to the beat, which
+    is what the writer puts back."""
+    body = b"".join([
+        varlen(0) + bytes([0xFF, 0x58, 2, 3, 3]),           # 3/8, and nothing more
+        varlen(0) + bytes([0x90, 60, 90]),
+        varlen(48) + bytes([0x80, 60, 0]),
+        varlen(0) + bytes([0xFF, 0x2F, 0]),
+    ])
+    path = raw_midi(tmp_path / "anno.mid", body)
+    with pytest.raises(IndexError):
+        mido.MidiFile(str(path))
+    song = io_midi.load(path)
+    ts = song.timesig_map[0]
+    assert (ts.numerator, ts.denominator, ts.clocks_per_click,
+            ts.notated_32nd_notes_per_beat) == (3, 8, 24, 8)
+    out = tmp_path / "rt.mid"
+    io_midi.save(song, out)
+    written = [m for m in mido.MidiFile(str(out)).tracks[0] if m.type == "time_signature"]
+    assert [(m.numerator, m.denominator, m.clocks_per_click,
+             m.notated_32nd_notes_per_beat) for m in written] == [(3, 8, 24, 8)]
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+
+
+@pytest.mark.parametrize("body, refusal", [
+    (bytes([0, 0xB0, 0x6D, 0x80, 0, 0xFF, 0x2F, 0]), OSError),           # Descent's loop controller at 128
+    (bytes([0, 0xF0, 3, 0x43, 0x97, 0xF7, 0, 0xFF, 0x2F, 0]), ValueError),  # sfa2ryu's SysEx payload over 127
+    (bytes([0, 0x90, 60]), EOFError),                                     # cut off mid-event
+], ids=["a data byte over 127", "a sysex byte over 127", "truncated"])
+def test_what_the_lenient_reader_cannot_place_is_refused_as_before(tmp_path, body, refusal):
+    """The lenient path steps over the faults it knows and nothing else. A data
+    byte over 127 waits on a decision - keep it off the wire, or clip it - and
+    a file cut off mid-event has no whole reading. Each raises what mido
+    raised, from ``load`` and from the check alike: a file is read whole or
+    not at all, never half."""
+    path = raw_midi(tmp_path / "bad.mid", body)
+    with pytest.raises(refusal):
+        mido.MidiFile(str(path))
+    with pytest.raises(refusal):
+        io_midi.load(path)
+    with pytest.raises(refusal):
+        io_midi.musical_content(path)

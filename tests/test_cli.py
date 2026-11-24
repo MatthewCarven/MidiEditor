@@ -206,3 +206,55 @@ class TestMultisetDiff:
     def test_check_one_still_passes_the_demo_file(self):
         record = check_one(str(BLUESY))
         assert record["status"] == "ok" and record["problems"] == []
+
+
+class TestCheckRun:
+    def test_the_report_is_saved_before_the_summary_prints(self, monkeypatch, tmp_path):
+        """A long run's report must not die with a failure while printing."""
+        import json
+
+        def boom(report):
+            raise RuntimeError("the console went away")
+
+        monkeypatch.setattr(seq, "_print_summary", boom)
+        report = tmp_path / "report.json"
+        args = seq.build_parser().parse_args(["check", str(BLUESY), "--report", str(report)])
+        with pytest.raises(RuntimeError):
+            seq._check(args)
+        saved = json.loads(report.read_text(encoding="utf-8"))
+        assert saved["files"] == 1 and saved["counts"] == {"ok": 1}
+
+    def test_the_fallback_carries_on_where_the_pool_died(self, monkeypatch, tmp_path, capsys):
+        """The one-process fallback checks the files the pool never got to,
+        not every file again - which counted the first ones twice."""
+        import concurrent.futures
+        from concurrent.futures.process import BrokenProcessPool
+
+        class DyingPool:
+            def __init__(self, max_workers):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def map(self, fn, names, chunksize=1):
+                for name in names[:2]:
+                    yield fn(name)
+                raise BrokenProcessPool("a worker died")
+
+        seen: list[str] = []
+
+        def fake_check_one(name):
+            seen.append(name)
+            return {"path": name, "status": "ok", "problems": []}
+
+        monkeypatch.setattr(concurrent.futures, "ProcessPoolExecutor", DyingPool)
+        monkeypatch.setattr(seq, "check_one", fake_check_one)
+        names = [tmp_path / f"{i}.mid" for i in range(5)]
+        records = list(seq._run(names, jobs=4))
+        assert [r["path"] for r in records] == [str(n) for n in names]
+        assert seen == [str(n) for n in names]                   # each once
+        assert "after 2 file(s)" in capsys.readouterr().err

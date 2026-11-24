@@ -1353,3 +1353,12 @@ Two weaknesses in `seq check` itself, found re-reading it for this: the report
 is written after the summary prints, so a failure while printing loses the
 run; and `_run`'s fallback, if the process pool dies partway, re-checks every
 file in one process and counts the ones already done twice.
+
+### Two checker weaknesses
+
+2026-11-25. Both from the 18th's re-reading of `seq check`. The report is
+saved before the summary prints, so a failure while printing a long run's
+summary no longer throws the run away. And `_run` counts what the pool
+yielded before it died, so the one-process fallback carries on from there
+instead of checking every file again and counting the first ones twice.
+Two tests. 507 tests.

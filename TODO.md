@@ -220,10 +220,10 @@ one layer up: **only what you actually changed changes.**
         or clip it to 127 the way mido's `clip=True` does.
   - [ ] **1 time signature two bytes short** (Anno_Main_Theme). Read the
         numerator and denominator that are there.
-- [ ] `seq check` writes the report *after* printing the summary, so a failure
-      while printing throws away a long run. Save first, print second.
-- [ ] `seq check`'s `_run` fallback re-checks every file if the process pool dies
-      partway, counting the ones already done twice.
+- [x] `seq check` writes the report *after* printing the summary, so a failure
+      while printing throws away a long run. Save first, print second. *Done 2026-11-25: saved first, printed second.*
+- [x] `seq check`'s `_run` fallback re-checks every file if the process pool dies
+      partway, counting the ones already done twice. *Done 2026-11-25: it counts what the pool yielded and carries on from there.*
 - [x] A realtime message inside a track (clock, active sensing - one NES rip has one)
       loads through mido, but mido's writer refuses to write it back (`realtime
       messages are not allowed in MIDI files`), so `seq check` calls the file

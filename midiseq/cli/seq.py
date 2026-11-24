@@ -547,11 +547,14 @@ def _check(args) -> int:
         "files_with_tempo_changes": totals["with_tempo_changes"],
     }
 
+    if args.report:
+        # Saved before the summary prints: a long run is not thrown away by a
+        # failure while printing it.
+        Path(args.report).write_text(
+            json.dumps(report, indent=2, default=str), encoding="utf-8")
     if grouped or len(paths) > 1:
         _print_summary(report)
     if args.report:
-        Path(args.report).write_text(
-            json.dumps(report, indent=2, default=str), encoding="utf-8")
         print(f"\nFull report written to {args.report}")
     return worst
 
@@ -559,16 +562,21 @@ def _check(args) -> int:
 def _run(paths, jobs: int):
     """Serial by default. Twenty thousand files is where -j starts to matter."""
     names = [str(p) for p in paths]
+    done = 0
     if jobs and jobs > 1 and len(names) > 1:
         from concurrent.futures import ProcessPoolExecutor
         try:
             with ProcessPoolExecutor(max_workers=jobs) as pool:
-                yield from pool.map(check_one, names, chunksize=16)
+                # map yields in order, so what came out before the pool died
+                # is exactly names[:done]; the fallback starts after it.
+                for record in pool.map(check_one, names, chunksize=16):
+                    yield record
+                    done += 1
             return
         except Exception as exc:                  # noqa: BLE001 - CLI boundary
-            print(f"seq: parallel run failed ({exc}); falling back to one "
-                  f"process", file=sys.stderr)
-    for name in names:
+            print(f"seq: parallel run failed ({exc}) after {done} file(s); "
+                  f"the rest go on in one process", file=sys.stderr)
+    for name in names[done:]:
         yield check_one(name)
 
 

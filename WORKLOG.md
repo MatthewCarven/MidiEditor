@@ -1303,3 +1303,53 @@ byte. Clock, start, stop and the like are wire traffic and mean nothing in
 a file; `_absolute` drops them now, their delta still counting, and
 `musical_content` ignores them the same way. The test's file is built by
 hand, since mido will not write it either. One test. 505 tests.
+
+### The 675, one at a time
+
+2026-11-18. A fresh full run, the first since the 26th's fixes: 40,196 files,
+110,311,449 notes, **nothing lost or invented**, 675 unreadable, 7 declined.
+All three numbers were predicted beforehand from this log: 675 is the last
+run's 676 less Maxhawk, which writes back now.
+
+Every one of the 675 is refused inside mido, before the loader runs a line -
+checked by running the current loader on each bucket's examples and reading
+the tracebacks. Read one at a time they are five different stories.
+
+**348, "MThd not found": not MIDI.** The examples are Sonic 1 and 2 fan mixes,
+and the two opened, with different titles, are the same blob - the shorter
+file is byte-for-byte the start of the longer, one short pattern repeating all
+the way through. Damaged downloads. Nothing to rescue.
+
+**246, "data byte must be in range" (OSError): another engine's
+instructions.** Each Descent file carries exactly three bad bytes, in track 2:
+`B0 6D 80`, `B0 6E FF`, `B0 6F 80` - controllers 109 to 111 at 128, 255 and
+128. Descent's music was HMP, and HMI's sound driver used controllers in that
+range for looping, with values no synth could take; the conversion to `.mid`
+copied them across. The framing holds - the stream stays in step after each -
+and every note is fine. **9 more (ValueError)** are the same thing inside a
+SysEx: mido's `check_data` refuses a payload with a byte over 127 (sfa2ryu).
+
+**51, KeySignatureError: one garbage meta.** Modes of 255, 253, 162, 154, 7
+and 2; 32 and 128 flats; 30 sharps. mido refuses the whole file over one key
+signature it cannot name.
+
+**20, EOFError: one stray byte.** Every one is Settlers 2. The track ends
+properly with `FF 2F 00`, then carries a single `00` inside the chunk's
+declared length; mido does not stop at end-of-track, reads that byte as the
+next delta, and runs off the end of the file.
+
+**1, IndexError: a time signature two bytes short.** mido reads `data[3]` of a
+time signature that hasn't got one (Anno_Main_Theme, DS).
+
+So 327 of the 675 are real songs with one fault mido will not step over, and
+348 are not MIDI at all. Rescue the 327 and every MIDI file in the library
+round-trips except the seven format 2 files declined on purpose. The fixes are
+in the TODO by bucket. The one real decision among them is what to do with a
+byte over 127: keep it exactly in the file, or clip it the way mido's
+`clip=True` would. Keeping it means holding it back from the synth - `0xFF` on
+the wire is a System Reset, and `0x80` would be read as a note-off.
+
+Two weaknesses in `seq check` itself, found re-reading it for this: the report
+is written after the summary prints, so a failure while printing loses the
+run; and `_run`'s fallback, if the process pool dies partway, re-checks every
+file in one process and counts the ones already done twice.

@@ -203,9 +203,27 @@ one layer up: **only what you actually changed changes.**
       tick so a saved file does not drift again (2026-10-21), but the original loss
       stands: 18 of the library's 40,196 files carry one with a delta (Balloon Fight
       has 3,554 of them). A raw walk of the track bytes would recover the deltas. *2026-10-26: recovered. The loader walks the file's own bytes the way mido does and puts the deltas back (nothing is touched if the walk and mido disagree anywhere); the writer writes them again and sorts an unknown meta last in its tick, so a reader without the walk still gets a zero; the check compares by tick. Most of the drift was ours, not mido's - see the worklog. All eleven files to hand read identical.*
-- [ ] Maybe, later: a lenient reader for the 62 "data byte must be in range"
-      files — old-game SysEx / running-status quirks that mido refuses. In the
-      spirit of the thing; not a writer bug.
+- [ ] **The 675 unreadable, read one at a time (2026-11-18).** All refused inside
+      mido before the loader runs a line; none are ours. 348 aren't MIDI at all
+      (damaged downloads). The other 327 are real songs with one fault mido won't
+      step over. Examples for each bucket are in that run's `report.json`;
+      WORKLOG has the detail.
+  - [ ] **51 key signatures mido can't name** (mode 255, 253, 162...; 32 and 128
+        flats; 30 sharps). Carry the meta as an unknown with its raw bytes so it
+        writes back exactly; the key filter simply doesn't hear it.
+  - [ ] **20 Settlers 2 tracks with one stray byte after end-of-track.**
+        End-of-track ends the track; the trailing `00` means nothing.
+  - [ ] **255 data bytes over 127** - 246 in channel messages (Descent's HMI loop
+        controllers: `B0 6D 80`, `B0 6E FF`, `B0 6F 80`) and 9 inside a SysEx
+        (sfa2ryu). **Decision for Matthew:** keep each byte exactly in the file
+        but never send it to the synth (a `0xFF` on the wire is a System Reset),
+        or clip it to 127 the way mido's `clip=True` does.
+  - [ ] **1 time signature two bytes short** (Anno_Main_Theme). Read the
+        numerator and denominator that are there.
+- [ ] `seq check` writes the report *after* printing the summary, so a failure
+      while printing throws away a long run. Save first, print second.
+- [ ] `seq check`'s `_run` fallback re-checks every file if the process pool dies
+      partway, counting the ones already done twice.
 - [x] A realtime message inside a track (clock, active sensing - one NES rip has one)
       loads through mido, but mido's writer refuses to write it back (`realtime
       messages are not allowed in MIDI files`), so `seq check` calls the file

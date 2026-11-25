@@ -247,7 +247,7 @@ one layer up: **only what you actually changed changes.**
         to.) The Descent folder's 27 files all come
         back identical; 10 of the 12 example files do, the other two being the
         fault below. The full run, 2026-11-26: 191 rescued, 54 declined - 20
-        programs, 15 pitch bends, 11 note-ons and 8 note-offs over 127.*
+        programs, 15 pitch bends, 11 note-ons and 8 note-offs over 127. Matthew left them so.*
   - [x] **Running status carried across a SysEx** (tmm_Kag_Theme, sna-Ending,
         both VGMusic; counted among the 255 above, since mido trips over the
         same check). The SMF spec says a SysEx cancels running status; these

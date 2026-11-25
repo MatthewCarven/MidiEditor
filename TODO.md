@@ -203,15 +203,22 @@ one layer up: **only what you actually changed changes.**
       tick so a saved file does not drift again (2026-10-21), but the original loss
       stands: 18 of the library's 40,196 files carry one with a delta (Balloon Fight
       has 3,554 of them). A raw walk of the track bytes would recover the deltas. *2026-10-26: recovered. The loader walks the file's own bytes the way mido does and puts the deltas back (nothing is touched if the walk and mido disagree anywhere); the writer writes them again and sorts an unknown meta last in its tick, so a reader without the walk still gets a zero; the check compares by tick. Most of the drift was ours, not mido's - see the worklog. All eleven files to hand read identical.*
-- [ ] **The 675 unreadable, read one at a time (2026-11-18).** All refused inside
+- [x] **The 675 unreadable, read one at a time (2026-11-18).** All refused inside
       mido before the loader runs a line; none are ours. 348 aren't MIDI at all
       (damaged downloads). The other 327 are real songs with one fault mido won't
-      step over. Examples for each bucket are in that run's `report.json`;
-      WORKLOG has the detail. *2026-11-25: when mido refuses a file,
+      step over. Examples for each bucket are in that run's report (kept as
+      `report-2026-11-18.json`, untracked); WORKLOG has the detail. *2026-11-25: when mido refuses a file,
       `_read_leniently` in `io_midi.py` walks the bytes itself and steps over
       the five faults below; Matthew decided the data bytes over 127 the same
       day, and the fifth, found inside the fourth's count, followed on his
-      yes.*
+      yes. 2026-11-26: the whole library again, 25 minutes with 12 workers:
+      40,196 files, nothing lost or invented, 404 unreadable (from 675), 7
+      declined; 271 of the 327 came back identical. Of the 404, 348 are not
+      MIDI, two are damaged inside (E3M5, cut off with four of its twelve
+      tracks missing; hogan, noise from byte 4,227 on and no end-of-track),
+      and 54 carry the one byte over 127 the reader declines on purpose - a
+      program, note or pitch-bend byte that would not write back as it is.
+      The worklog has the sweep.*
   - [x] **51 key signatures mido can't name** (mode 255, 253, 162...; 32 and 128
         flats; 30 sharps). Carry the meta as an unknown with its raw bytes so it
         writes back exactly; the key filter simply doesn't hear it. *Done
@@ -239,7 +246,8 @@ one layer up: **only what you actually changed changes.**
         own could put the status byte back explicitly; mido's cannot be told
         to.) The Descent folder's 27 files all come
         back identical; 10 of the 12 example files do, the other two being the
-        fault below.*
+        fault below. The full run, 2026-11-26: 191 rescued, 54 declined - 20
+        programs, 15 pitch bends, 11 note-ons and 8 note-offs over 127.*
   - [x] **Running status carried across a SysEx** (tmm_Kag_Theme, sna-Ending,
         both VGMusic; counted among the 255 above, since mido trips over the
         same check). The SMF spec says a SysEx cancels running status; these
@@ -252,8 +260,8 @@ one layer up: **only what you actually changed changes.**
         day on Matthew's yes: one rule in `_walk` under its `lenient` flag, a
         last channel status a SysEx does not clear. Both files come back
         identical, and the saved files are ones mido reads, since its writer
-        puts the status byte back. The full-library run says how many more
-        files have it.*
+        puts the status byte back. The full-library run (2026-11-26) found no
+        more: these two only, tmm_Kag_Theme twice over.*
   - [x] **1 time signature two bytes short** (Anno_Main_Theme). Read the
         numerator and denominator that are there. *Done 2026-11-25: with the
         spec's 24 clocks per click and eight 32nds for the two bytes it hasn't;

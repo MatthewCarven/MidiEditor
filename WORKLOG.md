@@ -1492,3 +1492,40 @@ still gives None. One test from bytes; 517 pass. tmm_Kag_Theme and
 sna-Ending both come back identical, and the saved files are ones mido
 reads, since its writer puts the status byte back after a SysEx. The
 full-library run is what says how many more files carry this.
+
+### The library, with the lenient reader
+
+2026-11-26. The full run again, the first with the lenient reader: 40,196
+files, 111,074,525 notes, **nothing lost or invented**, 404 unreadable, 7
+declined. 25 minutes with 12 workers. The 18th's report is kept beside it
+as `report-2026-11-18.json` (both untracked; `.gitignore` says
+`report*.json` now).
+
+271 of the 327 real songs came back identical: 191 of the 255 with a byte
+over 127, all 51 key signatures, 19 of the 20 EOFErrors, the 9 SysEx
+payloads and the short time signature. The stray-byte rule reached further
+than Settlers 2 - 14 of those 19 are Settlers, 4 are SNES and 1 PlayStation
+rips from VGMusic. Running status across a SysEx is just the two files it
+was built for; the one more the sweep found is tmm_Kag_Theme's second copy
+in another collection.
+
+`seq check` only shows mido's message for a file the reader declines, so a
+sweep (`sweep_refused.py`, scratch) ran every file mido refuses through
+`_walk(lenient=True)` and `_message` one event at a time and kept the first
+thing that gave up. The 404 left:
+
+- **348 not MIDI** - no MThd; the damaged downloads from the 18th.
+- **2 damaged inside.** E3M5 (Doom, Old Midi Collection): the header
+  promises twelve tracks, the file holds eight, and the eighth stops 2,122
+  bytes short of its declared length. hogan (NES, VGMusic): one track with
+  no end-of-track, good for about 4,200 bytes, then a delta of 1,591,720, a
+  program of 216 and a status byte of `FD` that no reader knows - noise to
+  the end. Neither can write back as it is; they belong with the 348.
+- **54 declined on purpose**, the byte-over-127 shape `_message` refuses
+  because it would not write back as it is: 20 program changes with a
+  program over 127 (`C9 FF`, `C0 D1`), 15 pitch bends with a byte over 127,
+  11 note-ons with a note number over 127 (`92 87 7F`, `99 FF 0A`), and 8
+  note-offs of note 255 (`85 FF 14`, the SNES mkr-* rips). A good few are
+  the same song in two collections. A writer of our own could put the
+  status byte back after each and keep them; mido's cannot be told to, and
+  a program of 255 is noise anyway. Left as they are.

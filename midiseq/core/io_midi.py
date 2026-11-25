@@ -26,6 +26,7 @@ import struct
 from pathlib import Path
 
 import mido
+from mido.messages.decode import decode_message
 from mido.midifiles.meta import build_meta_message, meta_charset
 
 from .model import (
@@ -291,10 +292,12 @@ def _read_leniently(path: str | Path) -> "mido.MidiFile | None":
       numerator and denominator it has, with the spec's defaults for the
       clocks-per-click and 32nds it hasn't.
 
-    A data byte over 127 - Descent's HMI loop controllers, a SysEx payload in
-    sfa2ryu - is still refused: keeping it exactly or clipping it is Matthew's
-    decision (TODO). Anything else the walk cannot read gives None, and the
-    caller raises mido's own refusal: a file is read whole or not at all.
+    - A data byte over 127 - Descent's HMI loop controllers (``B0 6D 80``,
+      ``B0 6E FF``), a SysEx payload in sfa2ryu, 255 files - is kept exactly
+      as the file has it, never clipped, and never sent: see ``_unchecked``.
+
+    Anything else the walk cannot read gives None, and the caller raises
+    mido's own refusal: a file is read whole or not at all.
     """
     try:
         walked = _walk(Path(path).read_bytes(), end_of_track_ends=True)
@@ -326,8 +329,33 @@ def _message(delta: int, status: int, payload) -> "mido.Message":
             data = data[1:]
         if data and data[-1] == 0xF7:
             data = data[:-1]
-        return mido.Message("sysex", data=data, time=delta)
-    return mido.Message.from_bytes([status, *payload], time=delta)
+        return _unchecked({"type": "sysex", "data": data, "time": delta})
+    msg = _unchecked(decode_message([status, *payload], time=delta, check=False))
+    if list(msg.bytes()) != [status, *payload] or (payload and payload[0] > 0x7F):
+        # Not kept exactly, so not kept; the caller raises mido's own refusal.
+        # A pitch bend or song position packs its two bytes into one value,
+        # and one over 127 comes back as different bytes. A first data byte
+        # over 127 - a note number of 255 - would go out in running status
+        # and read back as a status byte, taking the track with it.
+        raise ValueError("a data byte over 127 that would not write back as it is")
+    return msg
+
+
+def _unchecked(msgdict: dict) -> "mido.Message":
+    """``mido.Message(**msgdict)`` - without mido's range check when that is
+    all that fails, so a data byte over 127 stays the byte the file has.
+
+    Matthew's decision (2026-11-25): keep the byte exactly, never clip it,
+    and never send it. mido encodes the value it was given, so the file
+    writes back byte for byte; ``transport._channel_bytes`` is where the
+    message is held off the wire, where a ``0x80`` would be a note-off and
+    a ``0xFF`` a System Reset. A note is the one exception: it is music,
+    so the transport plays it, at a velocity brought within range.
+    """
+    try:
+        return mido.Message(**msgdict)
+    except ValueError:
+        return mido.Message(skip_checks=True, **msgdict)
 
 
 def _meta_message(meta_type: int, data: bytes, delta: int) -> "mido.MetaMessage":
@@ -579,16 +607,18 @@ def _events_for(track: Track, song: Song, *, conductor: bool) -> list[tuple]:
                 else _RANK_UNKNOWN_META if kind == "unknown_meta" else _RANK_OTHER)
         out.append((event.tick, rank, event.order, event.message.copy()))
 
+    # Built through _unchecked, as the reader builds them: a velocity over 127
+    # (SFA2Cred1's note-off at 0xC0) came in exactly and goes out exactly.
     for note in track.notes:
         channel = track.channel if note.channel is None else note.channel
-        out.append((note.start, _RANK_NOTE_ON, note.pitch, mido.Message(
-            "note_on", channel=channel, note=note.pitch,
-            velocity=note.velocity)))
+        out.append((note.start, _RANK_NOTE_ON, note.pitch, _unchecked({
+            "type": "note_on", "channel": channel, "note": note.pitch,
+            "velocity": note.velocity})))
         out.append((note.end,
                     _RANK_NOTE_OFF if note.duration else _RANK_ZERO_LENGTH_OFF,
-                    note.pitch, mido.Message(
-                        "note_off", channel=channel, note=note.pitch,
-                        velocity=note.off_velocity)))
+                    note.pitch, _unchecked({
+                        "type": "note_off", "channel": channel, "note": note.pitch,
+                        "velocity": note.off_velocity})))
 
     return out
 

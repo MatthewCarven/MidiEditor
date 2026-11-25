@@ -1420,3 +1420,63 @@ back from the synth (`0xFF` on the wire is a System Reset, `0x80` a
 note-off), or clip it to 127 the way mido's `clip=True` does. `_message` in
 `io_midi.py` is the one place a data byte is checked, so either answer lands
 there.
+
+### Bucket 4 - a data byte over 127, kept and off the wire
+
+2026-11-25, the same side session. Matthew chose "keep, off the wire". So
+`_message` builds its message through `_unchecked`: `mido.Message(**msgdict)`
+and, when the range check is all that fails, the same with `skip_checks=True`.
+A controller value of 128 or 255 stays what it is, mido encodes the value it
+was given, and the file writes back byte for byte. One guard: the message's
+bytes must come back equal to the walked bytes, and the first data byte must
+be within range. A pitch bend or song position packs its two data bytes into
+one value, so one over 127 would write back as different bytes; a first
+data byte over 127 - a note number of 255, `99 FF 0A`; a program number of
+191, `CB BF` - is worse: mido's
+writer puts a repeated status into running status, the `FF` then reads back
+as a meta's status byte, and the rest of the track goes with it (lm-lutz
+came back with 34 notes lost and garbage in their place; two more files
+would not read back at all). Not kept exactly, so not kept: both are
+refused as before, with mido's own error. Where a file is kept, mido refuses
+the saved file as it refused the original; the check reads both sides
+through `_read_file`.
+
+The writer needed the same: SFA2Cred1 releases a note at velocity `0xC0`,
+and the reader kept it, the model carried it, and `_events_for` then failed
+rebuilding the note-off with mido's checked constructor. Notes are built
+through `_unchecked` too now, so the note goes out as it came in.
+
+Off the wire is `transport._channel_bytes`, the one place a song's events
+become bytes for a sink: a message with a data byte over 127 gives None, so
+it is in neither the schedule nor the prelude of set-up messages. A SysEx's
+own closing F7 is not a data byte. A note is the one exception - it is music,
+so it plays, at the velocity the transport already brings within range (127
+on the attack, the release masked to seven bits); the bad byte itself never
+goes out. The sinks only forward what they are given, so nothing changes
+there.
+
+Two new io tests and one transport test; 515 pass. `seq check`: the Descent
+folder's 27 files all come back identical (12 were unreadable); Descent,
+Sega CD and arcade together, 1,070 of 1,074: three program numbers over 127,
+refused, and sna-Ending, the fault below. The SNES, Genesis and PS1 folders,
+11,841 files: 11,814 identical,
+16 not MIDI, 6 format 2 declined, and 5 data-byte files, of which
+tmm_Kag_Theme is the fault below and the other four are note numbers over
+127, refused.
+
+**A fifth fault, found inside the fourth's count.** Two of the twelve
+example files, tmm_Kag_Theme and sna-Ending, are still refused, and not for
+a data byte over 127: their writer carried running status across a SysEx,
+which the SMF spec forbids. mido takes the SysEx as the running status and
+reads the next channel message as SysEx data, length byte and all, until a
+byte over 127 trips the same check - so the 18 November run counted them
+with the SysEx payloads. Walked with the channel status from before the
+SysEx, both files parse cleanly to an end-of-track exactly at each chunk's
+end: tmm_Kag_Theme tracks 5 and 7, sna-Ending track 8, with 556 and 768
+note-ons recovered. That is one rule in `_walk` - a last channel status a
+SysEx does not clear - gated to the lenient path. It is in the TODO as its
+own item, unbuilt: outside this brief, and the full-library run is what says
+how many files have it.
+
+**For Matthew:** read a channel message in running status after a SysEx with
+the status from before it, or leave those files refused?

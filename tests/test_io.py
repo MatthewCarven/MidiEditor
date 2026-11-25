@@ -1318,17 +1318,71 @@ def test_a_time_signature_two_bytes_short_reads_its_numerator_and_denominator(tm
     assert io_midi.musical_content(path) == io_midi.musical_content(out)
 
 
+def test_a_data_byte_over_127_is_kept_exactly_and_written_back(tmp_path):
+    """Descent's HMI loop controllers, ``B0 6D 80`` and ``B0 6E FF``, in a
+    track with one note, released at SFA2Cred1's velocity of 0xC0. Matthew's
+    decision (2026-11-25): the byte is kept as the file has it, never clipped
+    to 127, and the saved file carries it byte for byte - the note too, which
+    the writer rebuilds from the model. mido refuses both files the same way;
+    the check reads both sides our way. (The transport holds the controllers
+    off the wire and plays the note within range: test_transport.)"""
+    path = raw_midi(tmp_path / "descent.mid", bytes([
+        0, 0xB0, 0x6D, 0x80,            # loop start, value 128
+        0, 0xB0, 0x6E, 0xFF,            # loop end, value 255
+        0, 0x90, 60, 64, 96, 0x80, 60, 0xC0,
+        0, 0xFF, 0x2F, 0,
+    ]))
+    with pytest.raises(OSError):
+        mido.MidiFile(str(path))
+    song = io_midi.load(path)
+    kept = [(e.message.control, e.message.value) for e in song.tracks[0].passthrough]
+    assert kept == [(0x6D, 128), (0x6E, 255)]
+    assert [(n.pitch, n.start, n.duration, n.off_velocity)
+            for n in song.tracks[0].notes] == [(60, 0, 96, 192)]
+    out = tmp_path / "out.mid"
+    io_midi.save(song, out)
+    written = out.read_bytes()
+    assert bytes([0xB0, 0x6D, 0x80]) in written and bytes([0x6E, 0xFF]) in written
+    assert bytes([0x80, 60, 0xC0]) in written
+    with pytest.raises(OSError):
+        mido.MidiFile(str(out))
+    content = io_midi.musical_content(path)
+    assert [other[2] for other in content["other"]] == ["[176, 109, 128]", "[176, 110, 255]"]
+    assert content == io_midi.musical_content(out)
+
+
+def test_a_sysex_byte_over_127_is_kept_exactly_and_written_back(tmp_path):
+    """sfa2ryu's SysEx payload: a byte over 127 inside the F0 ... F7 is kept,
+    and the message writes back as it came."""
+    path = raw_midi(tmp_path / "sfa2ryu.mid", bytes([
+        0, 0xF0, 3, 0x43, 0x97, 0xF7,
+        0, 0x90, 60, 64, 96, 0x80, 60, 0,
+        0, 0xFF, 0x2F, 0,
+    ]))
+    with pytest.raises(ValueError):
+        mido.MidiFile(str(path))
+    song = io_midi.load(path)
+    assert [tuple(e.message.data) for e in song.tracks[0].passthrough] == [(0x43, 0x97)]
+    out = tmp_path / "out.mid"
+    io_midi.save(song, out)
+    assert bytes([0xF0, 3, 0x43, 0x97, 0xF7]) in out.read_bytes()
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+
+
 @pytest.mark.parametrize("body, refusal", [
-    (bytes([0, 0xB0, 0x6D, 0x80, 0, 0xFF, 0x2F, 0]), OSError),           # Descent's loop controller at 128
-    (bytes([0, 0xF0, 3, 0x43, 0x97, 0xF7, 0, 0xFF, 0x2F, 0]), ValueError),  # sfa2ryu's SysEx payload over 127
-    (bytes([0, 0x90, 60]), EOFError),                                     # cut off mid-event
-], ids=["a data byte over 127", "a sysex byte over 127", "truncated"])
-def test_what_the_lenient_reader_cannot_place_is_refused_as_before(tmp_path, body, refusal):
-    """The lenient path steps over the faults it knows and nothing else. A data
-    byte over 127 waits on a decision - keep it off the wire, or clip it - and
-    a file cut off mid-event has no whole reading. Each raises what mido
-    raised, from ``load`` and from the check alike: a file is read whole or
-    not at all, never half."""
+    (bytes([0, 0xE0, 0x80, 0x40, 0, 0xFF, 0x2F, 0]), OSError),    # a pitch bend's low byte at 128
+    (bytes([0, 0x99, 0xFF, 0x0A, 0, 0x99, 0xFF, 0, 0, 0xFF, 0x2F, 0]), OSError),  # Rudora's note number 255
+    (bytes([0, 0x90, 60]), EOFError),                              # cut off mid-event
+], ids=["a pitch bend byte over 127", "a note number over 127", "truncated"])
+def test_what_the_lenient_reader_cannot_keep_exactly_is_refused_as_before(tmp_path, body, refusal):
+    """The lenient path steps over the faults it knows and nothing else. A
+    pitch bend packs its two bytes into one value, so one over 127 would
+    write back as different bytes; a note number over 127 would go out in
+    running status and read back as a status byte (seven files in the
+    folders checked, lm-lutz among them) - not kept exactly, so not kept. A file
+    cut off mid-event has no whole reading. Each raises what mido raised,
+    from ``load`` and from the check alike: a file is read whole or not at
+    all, never half."""
     path = raw_midi(tmp_path / "bad.mid", body)
     with pytest.raises(refusal):
         mido.MidiFile(str(path))

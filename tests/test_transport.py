@@ -88,6 +88,30 @@ class TestSchedule:
         s = schedule(song)
         assert all(e.message[0] >= 0x80 for e in s.events)
 
+    def test_a_data_byte_over_127_is_kept_off_the_wire(self):
+        """The reader keeps Descent's ``B0 6D 80`` as the file has it (test_io);
+        the schedule never carries it, not in time and not in the prelude: a
+        ``0x80`` on the wire is a note-off and the synth loses its place. A
+        SysEx's own closing F7 is not a data byte. A note over 127 is music,
+        so it plays, at a velocity within range."""
+        song = two_track_song()
+        song.tracks[0].notes.append(song.make_note(61, 0, BEAT, 200, off_velocity=192))
+        for i, msg in enumerate([
+            mido.Message("control_change", channel=0, control=0x6D, value=128, skip_checks=True),
+            mido.Message("control_change", channel=0, control=0x6E, value=255, skip_checks=True),
+            mido.Message("sysex", data=(0x43, 0x97), skip_checks=True),
+            mido.Message("sysex", data=(0x43, 0x12)),
+        ]):
+            song.tracks[0].passthrough.append(OpaqueEvent(0, msg, 20 + i))
+        sent = {e.message for e in schedule(song).events}
+        assert (0xF0, 0x43, 0x12, 0xF7) in sent                       # a SysEx within range goes out
+        assert (NOTE_ON, 61, 127) in sent                              # the note plays, at 127
+        prelude = {e.message for e in schedule(song, start_tick=2 * BEAT).events}
+        for messages in (sent, prelude):
+            assert not {(0xB0, 0x6D, 128), (0xB0, 0x6E, 255), (0xF0, 0x43, 0x97, 0xF7)} & messages
+            assert all(byte <= 0x7F for e in messages for byte in
+                       (e[1:-1] if e[0] == 0xF0 else e[1:]))
+
     def test_playing_from_the_middle_chases_the_held_pad_and_keeps_the_setup(self):
         s = schedule(two_track_song(), start_tick=2 * BEAT)
         assert s.start_tick == 2 * BEAT

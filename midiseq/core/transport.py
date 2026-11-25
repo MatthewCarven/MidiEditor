@@ -264,14 +264,28 @@ _SETUP_STATUSES = {PROGRAM_CHANGE, CONTROL_CHANGE, PITCH_BEND}
 
 
 def _channel_bytes(message) -> tuple[int, ...] | None:
-    """Raw bytes of a sendable message; None for meta events."""
+    """Raw bytes of a sendable message; None for a meta event, and None for
+    a message with a data byte over 127.
+
+    The reader keeps such a byte exactly as the file has it (Descent's loop
+    controllers, ``B0 6D 80``; a SysEx payload), so the file writes back
+    unchanged - but on the wire a ``0x80`` is a note-off and a ``0xFF`` a
+    System Reset, and the synth would lose its place in the stream. Held
+    back here, the one place a song's events become bytes; the sinks only
+    forward what they are given.
+    """
     if getattr(message, "is_meta", False):
         return None
     try:
         raw = tuple(message.bytes())
     except Exception:  # noqa: BLE001 - not a mido message
         return None
-    return raw if raw else None
+    if not raw:
+        return None
+    data = raw[1:-1] if raw[0] == 0xF0 else raw[1:]     # a SysEx ends in its own F7
+    if any(byte > 0x7F for byte in data):
+        return None
+    return raw
 
 
 def schedule(song: Song, start_tick: int = 0, end_tick: int | None = None, *,

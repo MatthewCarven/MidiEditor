@@ -209,8 +209,9 @@ one layer up: **only what you actually changed changes.**
       step over. Examples for each bucket are in that run's `report.json`;
       WORKLOG has the detail. *2026-11-25: when mido refuses a file,
       `_read_leniently` in `io_midi.py` walks the bytes itself and steps over
-      the three faults below that needed no decision; the data bytes over 127
-      wait on it.*
+      the four faults below; Matthew decided the data bytes over 127 the same
+      day. A fifth, found inside the fourth's count, is listed last and is
+      still refused.*
   - [x] **51 key signatures mido can't name** (mode 255, 253, 162...; 32 and 128
         flats; 30 sharps). Carry the meta as an unknown with its raw bytes so it
         writes back exactly; the key filter simply doesn't hear it. *Done
@@ -222,14 +223,35 @@ one layer up: **only what you actually changed changes.**
         End-of-track ends the track; the trailing `00` means nothing. *Done
         2026-11-25: the lenient walk skips from `FF 2F` to the chunk's declared
         end; the folder's 14 files come back identical.*
-  - [ ] **255 data bytes over 127** - 246 in channel messages (Descent's HMI loop
+  - [x] **255 data bytes over 127** - 246 in channel messages (Descent's HMI loop
         controllers: `B0 6D 80`, `B0 6E FF`, `B0 6F 80`) and 9 inside a SysEx
         (sfa2ryu). **Decision for Matthew:** keep each byte exactly in the file
         but never send it to the synth (a `0xFF` on the wire is a System Reset),
-        or clip it to 127 the way mido's `clip=True` does. *Still refused on
-        2026-11-25, on purpose: the lenient reader gives the file up at the byte
-        and mido's own error is raised, as before, until the decision is made.
-        `_message` in `io_midi.py` is where either answer lands.*
+        or clip it to 127 the way mido's `clip=True` does. *Matthew chose to
+        keep it, 2026-11-25. `_unchecked` in `io_midi.py` builds the message
+        without mido's range check, so the value stays 128 or 255 and writes
+        back byte for byte; `transport._channel_bytes` holds it off the wire,
+        schedule and prelude alike. Not kept exactly, so not kept, and still
+        refused: a pitch bend over 127 would write back as different bytes,
+        and a first data byte over 127 - a note number of 255, a program
+        number of 191; seven files across the folders checked - would go out
+        in running status and read back as a status byte. (A writer of our
+        own could put the status byte back explicitly; mido's cannot be told
+        to.) The Descent folder's 27 files all come
+        back identical; 10 of the 12 example files do, the other two being the
+        fault below.*
+  - [ ] **Running status carried across a SysEx** (tmm_Kag_Theme, sna-Ending,
+        both VGMusic; counted among the 255 above, since mido trips over the
+        same check). The SMF spec says a SysEx cancels running status; these
+        writers carried on, so mido takes the SysEx as the running status and
+        reads the next channel message as SysEx data, length byte and all,
+        until a byte over 127 stops it. Read with the channel status from
+        before the SysEx, both files walk cleanly to an end-of-track exactly at
+        each chunk's end (tmm_Kag_Theme tracks 5 and 7, sna-Ending track 8;
+        556 and 768 note-ons recovered). *Found 2026-11-25, still refused:
+        outside the lenient reader's brief. One rule in `_walk` - a last
+        channel status a SysEx does not clear - gated to the lenient path. The
+        full-library run says how many files have it.*
   - [x] **1 time signature two bytes short** (Anno_Main_Theme). Read the
         numerator and denominator that are there. *Done 2026-11-25: with the
         spec's 24 clocks per click and eight 32nds for the two bytes it hasn't;

@@ -139,7 +139,7 @@ def _effective_format(mid: "mido.MidiFile") -> int:
     return 1 if mid.type == 0 and len(mid.tracks) > 1 else mid.type
 
 
-def _walk(data: bytes, *, end_of_track_ends: bool = False
+def _walk(data: bytes, *, lenient: bool = False
           ) -> tuple[tuple[int, int], list[list[tuple]]] | None:
     """The header's (format, division) and every event per track, read from
     the bytes exactly as mido reads them - the chunk sizes, running status,
@@ -149,10 +149,14 @@ def _walk(data: bytes, *, end_of_track_ends: bool = False
     when the bytes do not parse that way (mido would not have loaded them
     either).
 
-    ``end_of_track_ends`` is the one departure from mido, for the lenient
-    reader: mido reads on past an end-of-track to the chunk's declared end,
-    and a stray byte there (Settlers 2 leaves one) sends it off the end of
-    the file. With the flag the track ends where it says it does."""
+    ``lenient`` is for the lenient reader, and departs from mido twice. mido
+    reads on past an end-of-track to the chunk's declared end, and a stray
+    byte there (Settlers 2 leaves one) sends it off the end of the file;
+    with the flag the track ends where it says it does. And mido takes a
+    SysEx as the running status, so a data byte after one is read as another
+    SysEx, length byte and all; with the flag it takes the channel status
+    from before the SysEx, which is what the writer meant (the spec says a
+    SysEx cancels running status; two VGMusic files carry it across)."""
 
     def varlen(pos: int) -> tuple[int, int]:
         value = 0
@@ -185,6 +189,7 @@ def _walk(data: bytes, *, end_of_track_ends: bool = False
             end = pos + 8 + int.from_bytes(data[pos + 4:pos + 8], "big")
             pos += 8
             last_status = None
+            last_channel = None         # the running status a SysEx does not clear
             events: list[tuple] = []
             while pos != end:               # mido's test too; past the end it reads on
                 if pos > end:
@@ -196,20 +201,26 @@ def _walk(data: bytes, *, end_of_track_ends: bool = False
                 if status < 0x80:           # running status: that byte was data
                     if last_status is None:
                         return None
+                    if last_status in (0xF0, 0xF7):
+                        # mido would read another SysEx here; the writer
+                        # meant the channel status from before the SysEx.
+                        if not lenient or last_channel is None:
+                            return None
+                        last_status = last_channel
                     peeked, status = 1, last_status
                 elif status != 0xFF:        # a meta leaves running status alone
                     last_status = status
+                    if status < 0xF0:
+                        last_channel = status
                 if status == 0xFF:
                     meta_type = data[pos]
                     length, pos = varlen(pos + 1)
                     meta_data, pos = take(pos, length)
                     events.append((delta, status, (meta_type, meta_data)))
-                    if end_of_track_ends and meta_type == 0x2F:
+                    if lenient and meta_type == 0x2F:
                         pos = end
                     continue
                 if status in (0xF0, 0xF7):
-                    if peeked:
-                        return None
                     length, pos = varlen(pos)
                     payload, pos = take(pos, length)
                 else:
@@ -291,16 +302,21 @@ def _read_leniently(path: str | Path) -> "mido.MidiFile | None":
     - A time signature two bytes short (Anno_Main_Theme) reads as the
       numerator and denominator it has, with the spec's defaults for the
       clocks-per-click and 32nds it hasn't.
-
     - A data byte over 127 - Descent's HMI loop controllers (``B0 6D 80``,
       ``B0 6E FF``), a SysEx payload in sfa2ryu, 255 files - is kept exactly
       as the file has it, never clipped, and never sent: see ``_unchecked``.
+    - A channel message in running status after a SysEx (tmm_Kag_Theme,
+      sna-Ending) takes the status from before the SysEx. The spec says a
+      SysEx cancels running status; mido takes the SysEx as the running
+      status and reads the message as SysEx data until a byte over 127
+      stops it. The saved file is one mido reads: the writer puts the
+      status byte back.
 
     Anything else the walk cannot read gives None, and the caller raises
     mido's own refusal: a file is read whole or not at all.
     """
     try:
-        walked = _walk(Path(path).read_bytes(), end_of_track_ends=True)
+        walked = _walk(Path(path).read_bytes(), lenient=True)
         if walked is None:
             return None
         (fmt, division), tracks = walked

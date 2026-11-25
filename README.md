@@ -353,14 +353,16 @@ Wildcards are expanded by `seq` itself rather than by the shell, so `*.mid` work
 on Windows too. Folders are walked recursively. One unreadable file is reported
 and the run carries on.
 
-Four faults mido alone refuses are stepped over, so the file loads and writes
+Five faults mido alone refuses are stepped over, so the file loads and writes
 back: a key signature mido cannot name (mode 255, 32 flats) is carried as raw
 bytes and written back exactly; a track that carries on after its end-of-track
 ends there; a time signature two bytes short is read as the numerator and
 denominator it has, with the spec's defaults for the rest; a data byte over 127
 (a controller value of 128 or 255, a SysEx payload) is kept exactly as the file
 has it, never clipped, and never sent to the synth, where it would read as a
-new status byte. A file that is not MIDI is still refused, and so is a note,
+new status byte; a channel message in running status after a SysEx, which the
+spec forbids, takes the status from before the SysEx and is written back with
+its status byte. A file that is not MIDI is still refused, and so is a note,
 controller or program *number* over 127, which mido's writer, with its running
 status, cannot put back unambiguously.
 

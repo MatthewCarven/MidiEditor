@@ -1369,6 +1369,32 @@ def test_a_sysex_byte_over_127_is_kept_exactly_and_written_back(tmp_path):
     assert io_midi.musical_content(path) == io_midi.musical_content(out)
 
 
+def test_running_status_carried_across_a_sysex_takes_the_status_from_before_it(tmp_path):
+    """tmm_Kag_Theme and sna-Ending carry running status across a SysEx, which
+    the spec forbids: mido takes the SysEx as the running status and reads the
+    next channel message as SysEx data, length byte and all. The lenient walk
+    takes the channel status from before the SysEx, which is what the writer
+    meant; the saved file has its status byte back, so mido reads it."""
+    path = raw_midi(tmp_path / "across.mid", bytes([
+        0, 0x90, 60, 64,                    # a note on
+        0, 0xF0, 3, 0x43, 0x12, 0xF7,       # a SysEx
+        96, 60, 0,                          # its release, in the running status from before the SysEx
+        0, 62, 64, 48, 62, 0,               # and another note the same way
+        0, 0xFF, 0x2F, 0,
+    ]))
+    with pytest.raises((OSError, EOFError, ValueError)):
+        mido.MidiFile(str(path))
+    song = io_midi.load(path)
+    assert [(n.pitch, n.start, n.duration) for n in song.tracks[0].notes] == [(60, 0, 96), (62, 96, 48)]
+    assert [tuple(e.message.data) for e in song.tracks[0].passthrough] == [(0x43, 0x12)]
+    out = tmp_path / "out.mid"
+    io_midi.save(song, out)
+    saved = mido.MidiFile(str(out))                 # mido's writer puts the status byte back
+    assert [m.type for m in saved.tracks[0]] == [
+        "sysex", "note_on", "note_off", "note_on", "note_off", "end_of_track"]
+    assert io_midi.musical_content(path) == io_midi.musical_content(out)
+
+
 @pytest.mark.parametrize("body, refusal", [
     (bytes([0, 0xE0, 0x80, 0x40, 0, 0xFF, 0x2F, 0]), OSError),    # a pitch bend's low byte at 128
     (bytes([0, 0x99, 0xFF, 0x0A, 0, 0x99, 0xFF, 0, 0, 0xFF, 0x2F, 0]), OSError),  # Rudora's note number 255

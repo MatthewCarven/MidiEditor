@@ -209,9 +209,9 @@ one layer up: **only what you actually changed changes.**
       step over. Examples for each bucket are in that run's `report.json`;
       WORKLOG has the detail. *2026-11-25: when mido refuses a file,
       `_read_leniently` in `io_midi.py` walks the bytes itself and steps over
-      the four faults below; Matthew decided the data bytes over 127 the same
-      day. A fifth, found inside the fourth's count, is listed last and is
-      still refused.*
+      the five faults below; Matthew decided the data bytes over 127 the same
+      day, and the fifth, found inside the fourth's count, followed on his
+      yes.*
   - [x] **51 key signatures mido can't name** (mode 255, 253, 162...; 32 and 128
         flats; 30 sharps). Carry the meta as an unknown with its raw bytes so it
         writes back exactly; the key filter simply doesn't hear it. *Done
@@ -240,7 +240,7 @@ one layer up: **only what you actually changed changes.**
         to.) The Descent folder's 27 files all come
         back identical; 10 of the 12 example files do, the other two being the
         fault below.*
-  - [ ] **Running status carried across a SysEx** (tmm_Kag_Theme, sna-Ending,
+  - [x] **Running status carried across a SysEx** (tmm_Kag_Theme, sna-Ending,
         both VGMusic; counted among the 255 above, since mido trips over the
         same check). The SMF spec says a SysEx cancels running status; these
         writers carried on, so mido takes the SysEx as the running status and
@@ -248,10 +248,12 @@ one layer up: **only what you actually changed changes.**
         until a byte over 127 stops it. Read with the channel status from
         before the SysEx, both files walk cleanly to an end-of-track exactly at
         each chunk's end (tmm_Kag_Theme tracks 5 and 7, sna-Ending track 8;
-        556 and 768 note-ons recovered). *Found 2026-11-25, still refused:
-        outside the lenient reader's brief. One rule in `_walk` - a last
-        channel status a SysEx does not clear - gated to the lenient path. The
-        full-library run says how many files have it.*
+        556 and 768 note-ons recovered). *Found 2026-11-25 and built the same
+        day on Matthew's yes: one rule in `_walk` under its `lenient` flag, a
+        last channel status a SysEx does not clear. Both files come back
+        identical, and the saved files are ones mido reads, since its writer
+        puts the status byte back. The full-library run says how many more
+        files have it.*
   - [x] **1 time signature two bytes short** (Anno_Main_Theme). Read the
         numerator and denominator that are there. *Done 2026-11-25: with the
         spec's 24 clocks per click and eight 32nds for the two bytes it hasn't;

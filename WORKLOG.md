@@ -1480,3 +1480,15 @@ how many files have it.
 
 **For Matthew:** read a channel message in running status after a SysEx with
 the status from before it, or leave those files refused?
+
+### Bucket 5 - running status carried across a SysEx
+
+2026-11-25, on Matthew's yes. The walker's flag is now `lenient`, and it
+departs from mido twice: an end-of-track ends the track, and a data byte
+after a SysEx takes the channel status from before the SysEx - a
+`last_channel` a SysEx does not clear - where mido would read another SysEx.
+The strict path, `_walk_deltas`, is unchanged: without the flag that byte
+still gives None. One test from bytes; 517 pass. tmm_Kag_Theme and
+sna-Ending both come back identical, and the saved files are ones mido
+reads, since its writer puts the status byte back after a SysEx. The
+full-library run is what says how many more files carry this.

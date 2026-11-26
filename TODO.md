@@ -437,6 +437,15 @@ one layer up: **only what you actually changed changes.**
     `:vel` and Tab round the tracks are the fallbacks if they don't arrive
   - [x] a mouse in the terminal: Textual gives clicks for free, and `TextView._xs` *2026-10-21: click, Shift+click, and the ruler.*
     already knows which column is under which character
+  - [ ] **Selecting in the terminal, to match the window (Matthew, 2026-11-26).** The
+    clipboard is the same in both (X / C / V / D), but the terminal builds a set one
+    note at a time - Enter, S, Shift+click, Ctrl+A - where the window also has a
+    Shift+drag marquee: "select with shift etc", a run of notes in one go. Possible:
+    Textual reports mouse down, move and up, so a drag marquee over the grid is a
+    contained piece; a keyboard spelling needs a free key, since Shift+arrows already
+    nudge and transpose the selection here - an anchor at the cursor, then the cursor's
+    movement paints the rectangle. "At some point", not now. The drag-select session
+    (2026-11-26) was briefed on the mouse half and waits for Matthew's word.
 
 ## Step 7 — the good stuff
 
